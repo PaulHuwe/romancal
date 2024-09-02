@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - '*.x'
+    tags:
+      - '*'
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Weekly Monday 9AM build
+    # * is a special character in YAML so you have to quote this string
+    - cron: '0 9 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    uses: OpenAstronomy/github-actions-workflows/.github/workflows/tox.yml@v1
+    with:
+      envs: |
+        - linux: check-style
+  latest_data_cache:
+    uses: ./.github/workflows/retrieve_cache.yml
+  test:
+    needs: [ latest_data_cache ]
+    uses: OpenAstronomy/github-actions-workflows/.github/workflows/tox.yml@v1
+    with:
+      libraries: |
+        brew:
+          - eigen
+          - fftw
+      setenv: |
+        WEBBPSF_PATH: ${{ needs.latest_data_cache.outputs.cache_path }}webbpsf-data/
+        GALSIM_CAT_PATH: ${{ needs.latest_data_cache.outputs.cache_path }}galsim_data/real_galaxy_catalog_23.5_example.fits
+        FFTW_DIR: /opt/homebrew/opt/fftw/lib/
+      cache-path: ${{ needs.latest_data_cache.outputs.cache_path }}
+      cache-key: ${{ needs.latest_data_cache.outputs.cache_key }}
+      envs: |
+        - linux: py310-oldestdeps-cov-xdist
+        - linux: py310-xdist
+        - linux: py311-xdist
+        - linux: py3-xdist
+        - macos: py3-xdist
+        - linux: py3-pyargs-xdist
+        - linux: py3-cov-xdist
+          coverage: codecov

@@ -1,0 +1,36 @@
+name: Weekly cron
+
+on:
+  schedule:
+    # Weekly Monday 6AM build
+    - cron: "0 0 * * 1"
+  pull_request:
+    # We also want this workflow triggered if the `Weekly CI` label is
+    # added or present when PR is updated
+    types:
+      - synchronize
+      - labeled
+  workflow_dispatch:
+
+jobs:
+  latest_data_cache:
+    if: (github.repository == 'spacetelescope/romanisim' && (github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'Weekly CI')))
+    uses: ./.github/workflows/retrieve_cache.yml
+  test:
+    needs: [ latest_data_cache ]
+    uses: OpenAstronomy/github-actions-workflows/.github/workflows/tox.yml@v1
+    with:
+      libraries: |
+        brew:
+          - eigen
+          - fftw
+      setenv: |
+        WEBBPSF_PATH: ${{ needs.latest_data_cache.outputs.cache_path }}webbpsf-data/
+        GALSIM_CAT_PATH: ${{ needs.latest_data_cache.outputs.cache_path }}galsim_data/real_galaxy_catalog_23.5_example.fits
+        FFTW_DIR: /opt/homebrew/opt/fftw/lib/
+      cache-path: ${{ needs.latest_data_cache.outputs.cache_path }}
+      cache-key: ${{ needs.latest_data_cache.outputs.cache_key }}
+      envs: |
+        - macos: py310-xdist
+        - macos: py311-xdist
+        - linux: py3-devdeps-xdist
