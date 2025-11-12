@@ -1,7 +1,6 @@
 """General utility objects"""
 
 import numpy as np
-from roman_datamodels.datamodels import AssociationsModel
 from roman_datamodels.dqflags import group, pixel
 
 
@@ -57,7 +56,9 @@ def is_association(asn_data):
     """
     Test if an object is an association by checking for required fields
     """
-    return AssociationsModel.is_association(asn_data)
+    return (
+        isinstance(asn_data, dict) and "asn_id" in asn_data and "asn_pool" in asn_data
+    )
 
 
 class LoggingContext:
@@ -120,3 +121,32 @@ def recarray_to_ndarray(x, to_dtype="<f8"):
     names = x.dtype.names
     astype = [(name, to_dtype) for name in names]
     return np.asarray(x.astype(astype).view(to_dtype).reshape((-1, len(names))))
+
+
+def parse_visitID(visit_id):
+    """Utility to parse the visit_id into its components
+
+    Input:
+       visit_id as a string
+
+    Output:
+      program number
+      execution plan number
+      pass number
+      segment number
+      observation number
+      visit number
+    """
+
+    visit_id_parts = dict(
+        [
+            ("Program", visit_id[0:5]),
+            ("Execution", visit_id[5:7]),
+            ("Pass", visit_id[7:10]),
+            ("Segment", visit_id[10:13]),
+            ("Observation", visit_id[13:16]),
+            ("Visit", visit_id[16:20]),
+        ]
+    )
+
+    return visit_id_parts

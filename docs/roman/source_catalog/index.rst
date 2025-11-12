@@ -8,9 +8,7 @@ Source Catalog
    :maxdepth: 2
 
    main.rst
-   arguments.rst
    psf.rst
+   arguments.rst
 
 .. automodapi:: romancal.source_catalog
-
-.. automodapi:: romancal.lib.psf

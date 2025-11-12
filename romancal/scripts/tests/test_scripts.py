@@ -3,7 +3,9 @@ import shutil
 import pytest
 
 SCRIPTS = [
-    "okify_regtests",
+    "roman_pointing_summary",
+    "roman_set_telescope_pointing",
+    "roman_v1_calculate",
     "verify_install_requires",
 ]
 

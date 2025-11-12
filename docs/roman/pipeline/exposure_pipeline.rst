@@ -27,8 +27,8 @@ table below.
  :ref:`saturation <saturation_step>`                |check|    |check|  |check|
  :ref:`refpix <refpix>`                             |check|    |check|  |check|
  :ref:`linearity <linearity_step>`                  |check|    |check|  |check|
- :ref:`dark_current <dark_current_step>`            |check|    |check|  |check|
  :ref:`ramp_fitting <ramp_fitting_step>`            |check|    |check|  |check|
+ :ref:`dark_current <dark_current_step>`            |check|    |check|  |check|
  :ref:`assign_wcs <assign_wcs_step>`                |check|    |check|  |check|
  :ref:`flatfield <flatfield_step>`                  |check|
  :ref:`photom <photom_step>`                        |check|
@@ -39,18 +39,7 @@ table below.
 
 Arguments
 ---------
-The ``exposure`` pipeline has an optional argument::
-
-  --use_ramp_jump_detection  boolean  default=True
-
-When set to ``True``, the pipeline will perform :ref:`jump <jump_step>`  detection as a part of the ramp
-fitting  step. The data at this stage of the pipeline are still in the form of the original
-3D ramps ( ngroups x ncols x nrows ) and have had all of the detector-level
-correction steps applied to it, up to but not including the detection and flagging of
-Cosmic-Ray (CR) hits within each ramp (integration). For this case the  :ref:`jump <jump_step>`
-module in :ref:`ramp_fitting <ramp_fitting_step>` will update the dq array with the CR hits (jumps) that
-are identified in the step.
-
+The ``exposure`` pipeline has no arguments
 
 Inputs
 ------
@@ -62,7 +51,7 @@ Inputs
 :File suffix: _uncal
 
 The input to the ``ExposurePipeline`` can be a single raw exposure,
-e.g. "r0008308002010007027_06311_0019_WFI01_uncal.asdf", which contains the
+e.g. "r0008308002010007027_0019_wfi01_uncal.asdf", which contains the
 original raw data from all of the detector readouts in the exposure
 ( ngroups x ncols x nrows ). The raw data may also be input using an association file.
 
@@ -77,6 +66,16 @@ contains the 3D array of detector pixel values, along with some optional
 extensions. When such a file is loaded into the pipeline, it is immediately
 converted into a `~romancal.datamodels.RampModel`, and has all additional data arrays
 for errors and Data Quality flags created and initialized.
+
+When the ``ExposurePipeline`` processes a fully saturated input (all pixels flagged as saturated).
+The corresponding output image will:
+
+- contain all 0 data arrays
+- contain all 0 variance arrays
+- not be processed by steps beyond saturation
+
+A single fully saturated input will also cause :ref:`tweakreg <tweakreg_step>` to be skipped
+for all input images.
 
 Outputs
 -------
@@ -110,3 +109,17 @@ raw 3D data. In addition to being a 2-dimensional
 image the output from the pipeline has the :ref:`reference pixels <refpix>`
 removed from the edges of the science array and saved as additional 3D arrays. The
 source catalog and segmentation map from the individual exposues is also saved.
+
+WFI Level 1/Level 2 WCS (WfiWcsModel)
++++++++++++++++++++++++++++++++++++++
+
+:Data model: `~romancal.datamodels.WfiWcsModel`
+:File suffix: _wcs
+
+Contains a copy of the final, Gaia-aligned, Level 2 Generalized World Coordinate
+System (GWCS) information along with a modified Level 1 GWCS which accounts for
+the border pixels. The Level 1 GWCS can be used directly with the related Level
+1 product.  This file also contains header metadata from the L2 image, which
+may include, for example, updated ephemeris information relative to the original
+raw file.  WfiWcs files are produced for both imaging and spectroscopic
+observations.

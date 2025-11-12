@@ -1,13 +1,22 @@
 #! /usr/bin/env python
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
 
 import roman_datamodels as rdm
-from roman_datamodels.datamodels import RampModel
+from roman_datamodels.datamodels import FpsModel, RampModel, ScienceRawModel, TvacModel
 from roman_datamodels.dqflags import pixel
 
 from romancal.dq_init import dq_initialization
 from romancal.stpipe import RomanStep
 
+if TYPE_CHECKING:
+    from typing import ClassVar
+
 __all__ = ["DQInitStep"]
+
+log = logging.getLogger(__name__)
 
 
 class DQInitStep(RomanStep):
@@ -22,7 +31,9 @@ class DQInitStep(RomanStep):
     input model.
     """
 
-    reference_file_types = ["mask"]
+    class_alias = "dq_init"
+
+    reference_file_types: ClassVar = ["mask"]
 
     def process(self, input):
         """Perform the dq_init calibration step
@@ -39,28 +50,50 @@ class DQInitStep(RomanStep):
         """
         # Open datamodel
         input_model = rdm.open(input)
+        is_tvac = isinstance(input_model, (FpsModel | TvacModel))
+        try:
+            # note that this succeeds even for ScienceRawModels
+            input_model = ScienceRawModel.from_tvac_raw(input_model)
+        except ValueError:
+            pass
 
         # Convert to RampModel
         output_model = RampModel.from_science_raw(input_model)
 
         # guide window range information
-        x_start = input_model.meta.guidestar.gw_window_xstart
-        x_end = input_model.meta.guidestar.gw_window_xsize + x_start
+        x_start = int(input_model.meta.guide_star.window_xstart)
+        x_stop = int(input_model.meta.guide_star.window_xstop)
+        y_start = int(input_model.meta.guide_star.window_ystart)
+        y_stop = int(input_model.meta.guide_star.window_ystop)
         # set pixeldq array to GW_AFFECTED_DATA (2**4) for the given range
-        output_model.pixeldq[int(x_start) : int(x_end), :] = pixel.GW_AFFECTED_DATA
-        self.log.info(
-            f"Flagging rows from: {x_start} to {x_end} as affected by guide window read"
+        output_model.pixeldq[:, x_start:x_stop] = pixel.GW_AFFECTED_DATA
+        log.info(
+            f"Flagging rows from: {x_start} to {x_stop} as affected by guide window read"
         )
+        output_model.pixeldq[y_start:y_stop, x_start:x_stop] |= pixel.DO_NOT_USE
 
         # Get reference file path
         reference_file_name = self.get_reference_file(output_model, "mask")
+
+        # the reference read has been subtracted from the science data
+        # in the L1 files.  Add it back into the data.
+        # the TVAC files are special and there the reference read was
+        # already added back in
+        reference_read = getattr(input_model, "reference_read", None)
+        if reference_read is not None and not is_tvac:
+            output_model.data += reference_read
+            del output_model.reference_read
+        reference_amp33 = getattr(input_model, "reference_amp33", None)
+        if reference_amp33 is not None and not is_tvac:
+            output_model.amp33 += reference_amp33
+            del output_model.reference_amp33
 
         # Test for reference file
         if reference_file_name != "N/A" and reference_file_name is not None:
             # If there are mask files, perform dq step
             # Open the relevant reference files as datamodels
             reference_file_model = rdm.open(reference_file_name)
-            self.log.debug(f"Using MASK ref file: {reference_file_name}")
+            log.debug(f"Using MASK ref file: {reference_file_name}")
 
             # Apply the DQ step, in place
             dq_initialization.do_dqinit(
@@ -86,8 +119,8 @@ class DQInitStep(RomanStep):
         else:
             # Skip DQ step if no mask files
             reference_file_model = None
-            self.log.warning("No MASK reference file found.")
-            self.log.warning("DQ initialization step will be skipped.")
+            log.warning("No MASK reference file found.")
+            log.warning("DQ initialization step will be skipped.")
 
             output_model.meta.cal_step.dq_init = "SKIPPED"
 

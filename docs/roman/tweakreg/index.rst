@@ -4,7 +4,7 @@
 TweakReg
 ========
 
-.. moduleauthor:: Mihai Cara <help@stsci.edu>
+.. moduleauthor:: Mihai Cara
 
 .. toctree::
    :maxdepth: 2
@@ -18,6 +18,5 @@ TweakReg
    :maxdepth: 2
 
    tweakreg_step
-   astrometric_utils
 
 .. automodapi:: romancal.tweakreg

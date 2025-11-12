@@ -7,16 +7,17 @@
    dq_init/index.rst
    flatfield/index.rst
    flux/index.rst
-   jump/index.rst
    linearity/index.rst
    outlier_detection/index.rst
+   orientation/index.rst
    pipeline/index.rst
    ramp_fitting/index.rst
    references_general/index.rst
    refpix/index.rst
    resample/index.rst
+   saturation/index.rst
    skymatch/index.rst
    source_catalog/index.rst
-   source_detection/index.rst
    stpipe/index.rst
    tweakreg/index.rst
+   set_velocity_aberration.rst

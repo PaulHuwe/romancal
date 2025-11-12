@@ -1,9 +1,6 @@
-import warnings
-
 import numpy as np
 import pytest
 from astropy import units as u
-from roman_datamodels import maker_utils
 from roman_datamodels.datamodels import ImageModel, WfiImgPhotomRefModel
 
 from romancal.photom import PhotomStep, photom
@@ -46,23 +43,17 @@ def create_photom_wfi_image(min_r=3.1, delta=0.1):
     nrows = len(optical_element)
 
     # Create sample photometry keyword values
-    photmjsr = (
-        np.linspace(min_r, min_r + (nrows - 1.0) * delta, nrows)
-        * u.megajansky
-        / u.steradian
-    )
-    uncertainty = (
-        np.linspace(min_r / 20.0, min_r / 20.0 + (nrows - 1.0) * delta / 20.0, nrows)
-        * u.megajansky
-        / u.steradian
+    photmjsr = np.linspace(min_r, min_r + (nrows - 1.0) * delta, nrows)
+    uncertainty = np.linspace(
+        min_r / 20.0, min_r / 20.0 + (nrows - 1.0) * delta / 20.0, nrows
     )
 
     # Create sample area keyword values
-    area_ster = 2.31307642258977e-14 * u.steradian
+    area_ster = 2.31307642258977e-14
     pixelareasr = np.ones(nrows, dtype=np.float64) * area_ster
 
     # Bundle values into a list
-    values = list(zip(photmjsr, uncertainty, pixelareasr))
+    values = list(zip(photmjsr, uncertainty, pixelareasr, strict=False))
 
     # Create dictionary containing all values
     reftab = {}
@@ -78,7 +69,7 @@ def create_photom_wfi_image(min_r=3.1, delta=0.1):
         reftab[element] = key_dict
 
     # Create default datamodel
-    photom_model = maker_utils.mk_wfi_img_photom()
+    photom_model = WfiImgPhotomRefModel.create_fake_data()
 
     # Copy values above into defautl datamodel
     photom_model.phot_table = reftab
@@ -90,7 +81,7 @@ def test_no_photom_match():
     """Test apply_photom warning for no match"""
 
     # Create sample WFI Level 2 science datamodel
-    input_model = maker_utils.mk_level2_image()
+    input_model = ImageModel.create_fake_data(shape=(20, 20))
 
     # Create photom reference datamodel
     photom_model = create_photom_wfi_image(min_r=3.1, delta=0.1)
@@ -102,31 +93,26 @@ def test_no_photom_match():
     input_model.meta.instrument.optical_element = "F146"
 
     # Set bad values which would be overwritten by apply_photom
-    input_model.meta.photometry.pixelarea_steradians = -1.0
+    input_model.meta.photometry.pixel_area = -1.0
     input_model.meta.photometry.conversion_megajanskys = -1.0
-    input_model.meta.photometry.conversion_microjanskys_uncertainty = -1.0
 
-    with warnings.catch_warnings(record=True) as caught:
+    with pytest.warns(
+        UserWarning,
+        match=f"No matching photom parameters for {input_model.meta.instrument.optical_element}",
+    ):
         # Look for now non existent F146 optical element
         output_model = photom.apply_photom(input_model, photom_model)
 
-        # Assert warning key matches that of the input file
-        assert (
-            str(caught[0].message).split()[-1]
-            == input_model.meta.instrument.optical_element
-        )
-
-        # Assert that photom elements are not updated
-        assert output_model.meta.photometry.pixelarea_steradians == -1.0
-        assert output_model.meta.photometry.conversion_megajanskys == -1.0
-        assert output_model.meta.photometry.conversion_microjanskys_uncertainty == -1.0
+    # Assert that photom elements are not updated
+    assert output_model.meta.photometry.pixel_area == -1.0
+    assert output_model.meta.photometry.conversion_megajanskys == -1.0
 
 
 def test_apply_photom1():
     """Test apply_photom applies correct metadata"""
 
     # Create sample WFI Level 2 science datamodel
-    input_model = maker_utils.mk_level2_image()
+    input_model = ImageModel.create_fake_data(shape=(20, 20))
 
     # Create photom reference datamodel
     photom_model = create_photom_wfi_image(min_r=3.1, delta=0.1)
@@ -138,70 +124,41 @@ def test_apply_photom1():
     output_model = photom.apply_photom(input_model, photom_model)
 
     # Set reference photometry
-    area_ster = 2.31307642258977e-14 * u.steradian
-    area_a2 = 0.000984102303070964 * u.arcsecond * u.arcsecond
+    area_ster = 2.31307642258977e-14
 
     # Tests for pixel areas
     assert np.isclose(
-        output_model.meta.photometry.pixelarea_steradians,
-        area_ster.value,
-        atol=1.0e-7,
-    )
-    # assert output_model.meta.photometry.pixelarea_steradians.unit == area_ster.unit
-    assert np.isclose(
-        output_model.meta.photometry.pixelarea_arcsecsq,
-        area_a2.value,
+        output_model.meta.photometry.pixel_area,
+        area_ster,
         atol=1.0e-7,
     )
 
     # Set reference photometry
-    phot_ster = 3.5 * u.megajansky / u.steradian
-    phot_a2 = phot_ster.to(u.microjansky / u.arcsecond**2)
+    phot_ster = 3.5
 
     # Tests for photometry
     assert np.isclose(
         output_model.meta.photometry.conversion_megajanskys,
-        phot_ster.value,
+        phot_ster,
         atol=1.0e-7,
     )
-    # assert output_model.meta.photometry.conversion_megajanskys.unit == phot_ster.unit
-    assert np.isclose(
-        output_model.meta.photometry.conversion_microjanskys,
-        phot_a2.value,
-        atol=1.0e-7,
-    )
-    # assert output_model.meta.photometry.conversion_microjanskys.unit == phot_a2.unit
 
     # Set reference photometric uncertainty
-    muphot_ster = 0.175 * u.megajansky / u.steradian
-    muphot_a2 = muphot_ster.to(u.microjansky / u.arcsecond**2)
+    muphot_ster = 0.175
 
     # Tests for photometric uncertainty
     assert np.isclose(
         output_model.meta.photometry.conversion_megajanskys_uncertainty,
-        muphot_ster.value,
+        muphot_ster,
         atol=1.0e-7,
     )
-    # assert (
-    #     output_model.meta.photometry.conversion_megajanskys_uncertainty.unit
-    #     == muphot_ster.unit
-    # )
-    assert np.isclose(
-        output_model.meta.photometry.conversion_microjanskys_uncertainty,
-        muphot_a2.value,
-        atol=1.0e-7,
-    )
-    # assert (
-    #     output_model.meta.photometry.conversion_microjanskys_uncertainty.unit
-    #     == muphot_a2.unit
-    # )
 
 
 def test_apply_photom2():
     """Test apply_photom does not change data values"""
 
     # Create sample WFI Level 2 science datamodel
-    input_model = maker_utils.mk_level2_image()
+    input_model = ImageModel.create_fake_data(shape=(20, 20))
 
     # Create photom reference datamodel
     photom_model = create_photom_wfi_image(min_r=3.1, delta=0.1)
@@ -231,17 +188,21 @@ def test_photom_step_interface(instrument, exptype):
     shape = (20, 20)
 
     # Create input model
-    wfi_image = maker_utils.mk_level2_image(shape=shape)
-    wfi_image_model = ImageModel(wfi_image)
+    wfi_image_model = ImageModel.create_fake_data(shape=shape)
+    wfi_image_model.meta.cal_step = {}
+    for step_name in wfi_image_model.schema_info("required")["roman"]["meta"][
+        "cal_step"
+    ]["required"].info:
+        wfi_image_model.meta.cal_step[step_name] = "INCOMPLETE"
+    wfi_image_model.meta.cal_logs = []
 
     # Create photom model
-    photom = maker_utils.mk_wfi_img_photom()
-    photom_model = WfiImgPhotomRefModel(photom)
+    photom_model = WfiImgPhotomRefModel.create_fake_data()
 
     # Run photom correction step
     result = PhotomStep.call(wfi_image_model, override_photom=photom_model)
 
-    assert (result.data == wfi_image.data).all()
+    assert (result.data == wfi_image_model.data).all()
     assert result.data.shape == shape
     if exptype == "WFI_IMAGE":
         assert result.meta.cal_step.photom == "COMPLETE"
@@ -269,38 +230,33 @@ def test_photom_step_interface_spectroscopic(instrument, exptype):
     shape = (20, 20)
 
     # Create input node
-    wfi_image = maker_utils.mk_level2_image(shape=shape)
+    wfi_image_model = ImageModel.create_fake_data(shape=shape)
 
     # Select exposure type and optical element
-    wfi_image.meta.exposure.type = "WFI_PRISM"
-    wfi_image.meta.instrument.optical_element = "PRISM"
+    wfi_image_model.meta.exposure.type = "WFI_PRISM"
+    wfi_image_model.meta.instrument.optical_element = "PRISM"
 
     # Set photometric values for spectroscopic data
-    wfi_image.meta.photometry.pixelarea_steradians = (
+    wfi_image_model.meta.photometry.pixel_area = (
         2.31307642258977e-14 * u.steradian
     ).value
-    wfi_image.meta.photometry.pixelarea_arcsecsq = (
-        0.000984102303070964 * u.arcsecond * u.arcsecond
-    ).value
-    wfi_image.meta.photometry.conversion_megajanskys = (
+    wfi_image_model.meta.photometry.conversion_megajanskys = (
         -99999 * u.megajansky / u.steradian
     ).value
-    wfi_image.meta.photometry.conversion_megajanskys_uncertainty = (
+    wfi_image_model.meta.photometry.conversion_megajanskys_uncertainty = (
         -99999 * u.megajansky / u.steradian
-    ).value
-    wfi_image.meta.photometry.conversion_microjanskys = (
-        -99999 * u.microjansky / u.arcsecond**2
-    ).value
-    wfi_image.meta.photometry.conversion_microjanskys_uncertainty = (
-        -99999 * u.microjansky / u.arcsecond**2
     ).value
 
     # Create input model
-    wfi_image_model = ImageModel(wfi_image)
+    wfi_image_model.meta.cal_step = {}
+    for step_name in wfi_image_model.schema_info("required")["roman"]["meta"][
+        "cal_step"
+    ]["required"].info:
+        wfi_image_model.meta.cal_step[step_name] = "INCOMPLETE"
+    wfi_image_model.meta.cal_logs = []
 
     # Create photom model
-    photom = maker_utils.mk_wfi_img_photom()
-    photom_model = WfiImgPhotomRefModel(photom)
+    photom_model = WfiImgPhotomRefModel.create_fake_data()
 
     # Run photom correction step
     result = PhotomStep.call(wfi_image_model, override_photom=photom_model)
@@ -310,8 +266,5 @@ def test_photom_step_interface_spectroscopic(instrument, exptype):
 
     # Test that keywords are properly overwritten
     assert result.meta.photometry.conversion_megajanskys is None
-    assert result.meta.photometry.conversion_microjanskys is None
     assert result.meta.photometry.conversion_megajanskys_uncertainty is None
-    assert result.meta.photometry.conversion_microjanskys_uncertainty is None
-    assert result.meta.photometry.pixelarea_steradians is None
-    assert result.meta.photometry.pixelarea_arcsecsq is None
+    assert result.meta.photometry.pixel_area is None

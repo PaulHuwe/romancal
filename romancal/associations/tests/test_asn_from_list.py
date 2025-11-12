@@ -3,7 +3,7 @@
 import pytest
 
 from romancal.associations import Association, AssociationRegistry, load_asn
-from romancal.associations.asn_from_list import Main, asn_from_list
+from romancal.associations.asn_from_list import _cli, asn_from_list
 from romancal.associations.exceptions import AssociationNotValidError
 
 
@@ -30,7 +30,7 @@ def test_base_roundtrip():
 def test_association_target():
     """Create the simple associations with target set"""
     items = ["a", "b", "c"]
-    target_name = "r274dp63x32y80"
+    target_name = "270p65x48y69"
     product_name = "l3_target"
     rule_name = "Association"
     asn = asn_from_list(
@@ -111,29 +111,29 @@ def test_cmdline_fails():
 
     # No arguments
     with pytest.raises(SystemExit):
-        Main([])
+        _cli([])
 
     # Only the association file argument
     with pytest.raises(SystemExit):
-        Main(["-o", "test_asn.json"])
+        _cli(["-o", "test_asn.json"])
 
 
-@pytest.mark.parametrize("format", ["json", "yaml"])
-def test_cmdline_success(format, tmp_path):
+def test_cmdline_success(tmp_path):
     """Create ELPP associations in different formats"""
     path = tmp_path / "test_asn.json"
     product_name = "test_product"
     inlist = ["a", "b", "c"]
-    args = ["-o", str(path), "--product-name", product_name, "--format", format]
+    args = ["-o", str(path), "--product-name", product_name]
     args = args + inlist
-    Main(args)
+    return_code = _cli(args)
     with path.open() as fp:
-        asn = load_asn(fp, format=format)
+        asn = load_asn(fp, format="json")
     assert len(asn["products"]) == 1
     assert asn["products"][0]["name"] == product_name
     members = asn["products"][0]["members"]
     expnames = [member["expname"] for member in members]
     assert inlist == expnames
+    assert not return_code
 
 
 def test_cmdline_change_rules(tmp_path):
@@ -150,7 +150,7 @@ def test_cmdline_change_rules(tmp_path):
         "test",
     ]
     args = args + inlist
-    Main(args)
+    _cli(args)
     with path.open() as fp:
         asn = load_asn(fp, registry=AssociationRegistry(include_bases=True))
     # assert inlist == asn['members']

@@ -1,5 +1,13 @@
 Description
 ============
+The Data Quality (DQ) initialization step in the calibration pipeline performs
+two functions: Population of the DQ mask and the conversion of the science raw
+data, the "_uncal" file, to the ramp model by the majority of steps in the
+exposure level pipeline.
+
+Data Quality Initialization
+---------------------------
+
 The Data Quality (DQ) initialization step in the calibration pipeline
 populates the DQ mask for the input dataset. Flag values from the
 appropriate static mask ("MASK") reference file in CRDS are copied into the
@@ -23,3 +31,30 @@ Note that when applying the ``dq_init`` step to guide star data, the flags from 
 file are propagated into the guide star dataset "dq" array, instead of the "pixeldq" array.
 The step identifies guide star data based on the following exposure type (exposure.type keyword attribute) values:
 WFI_WIM_ACQ, WFI_WIM_TRACK, WFI_WSM_ACQ1, WFI_WSM_ACQ2, WFI_WSM_TRACK.
+
+Conversion from Level 1 uncal files
+-----------------------------------
+
+The DQ init takes an input raw "uncal" file and outputs a
+"ramp" model (RampModel) that is the input for all following steps
+until ramp fitting.  For the most part, the meta information between
+the input raw, or "uncal", model and the ramp model is identical.
+
+However, romancal supports processing a selection of files which use an outdated
+schema. It supports these with a bespoke method that converts the files to the
+new format when they are read in dq_init. This conversion does not do a detailed
+mapping between all of the new and old metadata, but instead opportunistically
+looks for fields with common names and assigns them. Other metadata with
+non-matching names is simply into a new 'extras' component of the metadata. This
+allows processing to proceed and preserves the original metadata, but the
+resulting files have duplicates of many entries.
+
+The "data" arrays in the uncal files contain the difference between
+the total values measured in the telescope and the "reference read"
+measured immediately before the science reads.  Steps like the
+linearity correction step need to operate on the full pixel values,
+including the reference read contribution.  Accordingly, the DQ
+initialization step also adds the reference read and the
+reference_amp33 read to the data and amp33 pixels, respectively, so
+that the ramp model always contains the total number of DN present
+in the detector.

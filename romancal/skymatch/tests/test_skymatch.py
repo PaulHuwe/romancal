@@ -1,4 +1,3 @@
-import os
 from itertools import product
 
 import astropy.units as u
@@ -10,7 +9,6 @@ from gwcs import coordinate_frames as cf
 from gwcs import wcs as gwcs_wcs
 from roman_datamodels.datamodels import ImageModel
 from roman_datamodels.dqflags import pixel
-from roman_datamodels.maker_utils import mk_level2_image, mk_sky_background
 
 from romancal.datamodels import ModelLibrary
 from romancal.skymatch import SkyMatchStep
@@ -69,21 +67,23 @@ def mk_image_model(
     sky_offset=[0, 0] * u.arcsec,
     rotation=0 * u.deg,
     image_shape=(100, 100),
-    rng=np.random.default_rng(619),
+    rng=None,
 ):
-    l2 = mk_level2_image(shape=image_shape)
-    l2_im = ImageModel(l2)
+    rng = np.random.default_rng(619) if rng is None else rng
+    l2_im = ImageModel.create_fake_data(shape=image_shape)
     l2_im.data = rng.normal(
         loc=rate_mean, scale=rate_std, size=l2_im.data.shape
     ).astype(np.float32)
 
     l2_im.meta["wcs"] = mk_gwcs(image_shape, sky_offset=sky_offset, rotate=rotation)
 
-    l2_im.meta["background"] = mk_sky_background(
-        level=None, subtracted=False, method="None"
-    )
-
-    l2_im.meta.cal_step["skymatch"] = "INCOMPLETE"
+    l2_im.meta.background = {"level": None, "subtracted": False, "method": "None"}
+    l2_im.meta.cal_step = {}
+    for step_name in l2_im.schema_info("required")["roman"]["meta"]["cal_step"][
+        "required"
+    ].info:
+        l2_im.meta.cal_step[step_name] = "INCOMPLETE"
+    l2_im.meta.cal_logs = []
     return l2_im
 
 
@@ -178,7 +178,7 @@ def test_skymatch(wfi_rate, skymethod, subtract, skystat, match_down):
     levels = [9.12, 8.28, 2.56]
 
     with library:
-        for i, (im, lev) in enumerate(zip(library, levels)):
+        for i, (im, lev) in enumerate(zip(library, levels, strict=False)):
             im.data = rng.normal(loc=lev, scale=0.05, size=im.data.shape)
             library.shelve(im, i)
 
@@ -208,7 +208,7 @@ def test_skymatch(wfi_rate, skymethod, subtract, skystat, match_down):
 
     with result:
         for i, (im, lev, rlev, slev) in enumerate(
-            zip(result, levels, ref_levels, sub_levels)
+            zip(result, levels, ref_levels, sub_levels, strict=False)
         ):
             # check that meta was set correctly:
             assert im.meta.background.method == skymethod
@@ -243,7 +243,7 @@ def test_skymatch_overlap(mk_sky_match_image_models, skymethod, subtract, skysta
     levels = [9.12, 9.12, 8.28, 8.28, 2.56]
 
     with library:
-        for i, (im, lev) in enumerate(zip(library, levels)):
+        for i, (im, lev) in enumerate(zip(library, levels, strict=False)):
             im.data = rng.normal(loc=lev, scale=0.01, size=im.data.shape)
             library.shelve(im, i)
 
@@ -273,7 +273,7 @@ def test_skymatch_overlap(mk_sky_match_image_models, skymethod, subtract, skysta
 
     with result:
         for i, (im, lev, rlev, slev) in enumerate(
-            zip(result, levels, ref_levels, sub_levels)
+            zip(result, levels, ref_levels, sub_levels, strict=False)
         ):
             # check that meta was set correctly:
             assert im.meta.background.method == skymethod
@@ -325,7 +325,7 @@ def test_skymatch_2x(wfi_rate, skymethod, subtract):
     levels = [9.12, 8.28, 2.56]
 
     with library:
-        for i, (im, lev) in enumerate(zip(library, levels)):
+        for i, (im, lev) in enumerate(zip(library, levels, strict=False)):
             im.data = rng.normal(loc=lev, scale=0.05, size=im.data.shape)
             library.shelve(im, i)
 
@@ -374,7 +374,7 @@ def test_skymatch_2x(wfi_rate, skymethod, subtract):
     # compare results
     with result2:
         for i, (im, lev, rlev, slev) in enumerate(
-            zip(result2, levels, ref_levels, sub_levels)
+            zip(result2, levels, ref_levels, sub_levels, strict=False)
         ):
             # check that meta was set correctly:
             assert im.meta.background.method == skymethod
@@ -404,13 +404,12 @@ def test_skymatch_2x(wfi_rate, skymethod, subtract):
 def test_skymatch_always_returns_modellibrary_with_updated_datamodels(
     input_type,
     mk_sky_match_image_models,
-    tmp_path,
     create_mock_asn_file,
+    function_jail,
 ):
     """Test that the SkyMatchStep always returns a ModelLibrary
     with updated data models after processing different input types."""
 
-    os.chdir(tmp_path)
     [im1a, im1b, im2a, im2b, im3], dq_mask = mk_sky_match_image_models
 
     im1a.meta.filename = "im1a.asdf"
@@ -420,12 +419,12 @@ def test_skymatch_always_returns_modellibrary_with_updated_datamodels(
     im3.meta.filename = "im3.asdf"
 
     library = ModelLibrary([im1a, im1b, im2a, im2b, im3])
-    library._save(tmp_path)
+    library._save(function_jail)
 
     step_input_map = {
         "ModelLibrary": library,
         "ASNFile": create_mock_asn_file(
-            tmp_path,
+            function_jail,
             members_mapping=[
                 {"expname": im1a.meta.filename, "exptype": "science"},
                 {"expname": im1b.meta.filename, "exptype": "science"},

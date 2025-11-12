@@ -2,12 +2,9 @@
 
 
 [![Documentation Status](https://readthedocs.org/projects/roman-pipeline/badge/?version=latest)](https://roman-pipeline.readthedocs.io/en/latest/?badge=latest)
-[![CI](https://github.com/spacetelescope/romancal/actions/workflows/roman_ci.yml/badge.svg)](https://github.com/spacetelescope/romancal/actions/workflows/roman_ci.yml)
+[![Tests](https://github.com/spacetelescope/romancal/actions/workflows/tests.yml/badge.svg)](https://github.com/spacetelescope/romancal/actions/workflows/tests.yml)
 [![Powered by STScI Badge](https://img.shields.io/badge/powered%20by-STScI-blue.svg?colorA=707170&colorB=3e8ddd&style=flat)](http://www.stsci.edu)
 [![Powered by Astropy Badge](http://img.shields.io/badge/powered%20by-AstroPy-orange.svg?style=flat)](http://www.astropy.org/)
-
-> [!IMPORTANT]
-> Roman requires Python 3.10 or above and a C compiler for dependencies.
 
 > [!NOTE]
 > Linux and MacOS platforms are tested and supported. Windows is not currently supported.
@@ -136,9 +133,9 @@ To build the docs yourself, clone this repository and build the documentation wi
 ## Contributions and Feedback
 
 We welcome contributions and feedback on the project. Please follow the
-[contributing guidelines](CONTRIBUTING.md) to submit an issue or a pull request.
+[contributing guidelines](https://github.com/spacetelescope/romancal/blob/main/CONTRIBUTING.md) to submit an issue or a pull request.
 
-We strive to provide a welcoming community to all of our users by abiding with the [Code of Conduct](CODE_OF_CONDUCT.md)
+We strive to provide a welcoming community to all of our users by abiding with the [Code of Conduct](https://github.com/spacetelescope/romancal/blob/main/CODE_OF_CONDUCT.md)
 .
 
 If you have questions or concerns regarding the software, please open
@@ -171,6 +168,11 @@ an [issue](https://github.com/spacetelescope/romancal/issues).
 | 0.16.1    | 24Q4_B15  | 063          | Aug 2024  | Release for Build 24Q3_B15 (Build 15) |
 | 0.16.2    | 24Q4_B15  | 063          | Aug 2024  | Release for Build 24Q3_B15 (Build 15) |
 | 0.16.3    | 24Q4_B15  | 063          | Aug 2024  | Release for Build 24Q3_B15 (Build 15) |
+| 0.17.0    | 25Q1_B16  | 065          | Nov 2024  | Release for Build 25Q1_B16 (Build 16) |
+| 0.18.0    | 25Q2_B17  | 072          | Feb 2025  | Release for Build 25Q2_B17 (Build 17) |
+| 0.19.0    | 25Q3_B18  | 083          | May 2025  | Release for Build 25Q3_B18 (Build 18) |
+| 0.20.0    | 25Q4_B19  | 088          | Aug 2025  | Release for Build 25Q4_B19 (Build 19) |
+| 0.20.1    | 25Q4_B19  | 088          | Aug 2025  | Release for Build 25Q4_B19 (Build 19) |
 
 
 Note: CRDS_CONTEXT values flagged with an asterisk in the above table are estimates
@@ -193,9 +195,6 @@ $ crds sync --contexts roman-edit
 The CRDS_READONLY_CACHE variable should not be set, since references will need to be downloaded to your local cache as
 they are requested.
 
-> **Note**\
-> If it is desired to run tests against WebbPSF data, use the `pytest --webbpsf` flag or the `-webbpsf` tox factor and follow [these instructions to download the data files / point to existing files on the shared internal network](https://webbpsf.readthedocs.io/en/latest/installation.html#data-install).
-
 ### Running tests
 
 Unit tests can be run via `pytest`. Within the top level of your local `roman` repo checkout:
@@ -212,17 +211,14 @@ Need to parallelize your test runs over 8 cores?
 
 Latest regression test results can be found here (STScI staff only):
 
-https://plwishmaster.stsci.edu:8081/job/RT/job/romancal/
+https://github.com/spacetelescope/RegressionTests/actions/workflows/romancal.yml
 
 To run the regression tests on your local machine, get the test dependencies and set the environment variable
-TEST_BIGDATA to our Artifactory server
+`TEST_BIGDATA` to our Artifactory server
 (STSci staff members only):
 
     pip install -e ".[test]"
     export TEST_BIGDATA=https://bytesalad.stsci.edu/artifactory
-
-To run all the regression tests (except the very slow ones):
-
     pytest --bigdata romancal/regtest
 
 You can control where the test results are written with the

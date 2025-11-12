@@ -1,10 +1,6 @@
-import json
-
 import pytest
 import roman_datamodels.datamodels as dm
-from roman_datamodels.maker_utils import mk_level2_image
 
-from romancal.associations import load_asn
 from romancal.associations.asn_from_list import asn_from_list
 from romancal.datamodels.library import ModelLibrary
 
@@ -25,8 +21,8 @@ def example_asn_path(tmp_path):
     """
     fns = []
     for i in range(_N_MODELS):
-        m = dm.ImageModel(mk_level2_image(shape=(2, 2)))
-        m.meta.observation.program = "0001"
+        m = dm.ImageModel.create_fake_data(shape=(2, 2))
+        m.meta.observation.program = 1
         m.meta.observation.observation = _OBSERVATION_NUMBERS[i]
         m.meta.observation.visit = 1
         m.meta.observation.visit_file_group = 1
@@ -52,33 +48,6 @@ def example_library(example_asn_path):
     library created from the association with default options
     """
     return ModelLibrary(example_asn_path)
-
-
-def _set_custom_member_attr(example_asn_path, member_index, attr, value):
-    """
-    Helper function to modify the association at `example_asn_path`
-    by adding an attribute `attr` to the member list (at index
-    `member_index`) with value `value`. This is used to modify
-    the `group_id` or `exptype` of a certain member for some tests.
-    """
-    with open(example_asn_path) as f:
-        asn_data = load_asn(f)
-    asn_data["products"][0]["members"][member_index][attr] = value
-    with open(example_asn_path, "w") as f:
-        json.dump(asn_data, f)
-
-
-def test_assign_member(example_asn_path):
-    exptypes = ["science"] * _N_MODELS
-    _set_custom_member_attr(example_asn_path, 1, "exptype", "background")
-    exptypes[1] = "background"
-
-    def get_exptype(model, index):
-        return model.meta.exptype.lower()
-
-    library = ModelLibrary(example_asn_path)
-
-    assert list(library.map_function(get_exptype)) == exptypes
 
 
 @pytest.mark.parametrize("attr", ["group_names", "group_indices"])

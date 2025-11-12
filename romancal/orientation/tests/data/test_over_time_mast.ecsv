@@ -1,0 +1,23 @@
+# %ECSV 1.0
+# ---
+# datatype:
+# - {name: source, datatype: string}
+# - {name: obstime, datatype: string}
+# - {name: ra, datatype: float64}
+# - {name: dec, datatype: float64}
+# - {name: pa_v3, datatype: float64}
+# meta: !!omap
+# - {allow_default: 'False'}
+# - {aperture: '''WFI02_FULL'''}
+# - {default_quaternion: None}
+# - {obsend: None}
+# - {obsstart: None}
+# - {pointing: 'Pointing(obstime=<Time object: scale=''utc'' format=''unix'' value=1805829668.0276294>, q=array([-0.69018802,  0.12195182,
+#     -0.695103  ,  0.15999998]))'}
+# - {reduce_func: <function pointing_from_average at 0x1182f9440>}
+# - {service_kwargs: None}
+# - {pysiaf: <module 'pysiaf' from '/Users/eisenham/miniforge3/envs/rcal-1259-targapp/lib/python3.13/site-packages/pysiaf/__init__.py'>}
+# - {tolerance: '60.0'}
+# schema: astropy-2.0
+source obstime ra dec pa_v3
+"time range" 2027-03-23T19:21:08.028 270.5746110716807 66.99619310305059 87.42805263041119

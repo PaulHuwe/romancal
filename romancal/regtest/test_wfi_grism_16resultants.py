@@ -1,4 +1,4 @@
-""" Roman tests for flat field correction """
+"""Roman tests for flat field correction"""
 
 import pytest
 import roman_datamodels as rdm
@@ -10,24 +10,25 @@ pytestmark = [pytest.mark.bigdata, pytest.mark.soctests]
 
 
 @pytest.fixture(scope="module")
-def run_elp(rtdata_module):
+def run_elp(rtdata_module, resource_tracker):
     rtdata = rtdata_module
 
     # The input data is from INS for stress testing at some point this should be generated
     # by INS every time new data is needed.
 
-    input_data = "r0000201001001001001_0004_WFI01_uncal.asdf"
+    input_data = "r0000201001001001001_0004_wfi01_grism_uncal.asdf"
     rtdata.get_data(f"WFI/grism/{input_data}")
     rtdata.input = input_data
 
     # Test Pipeline
-    output = "r0000201001001001001_0004_WFI01_cal.asdf"
+    output = "r0000201001001001001_0004_wfi01_grism_cal.asdf"
     rtdata.output = output
     args = [
         "roman_elp",
         rtdata.input,
     ]
-    ExposurePipeline.from_cmdline(args)
+    with resource_tracker.track():
+        ExposurePipeline.from_cmdline(args)
     return rtdata
 
 
@@ -53,6 +54,10 @@ def input_model(input_filename):
         yield model
 
 
+def test_log_tracked_resources(log_tracked_resources, run_elp):
+    log_tracked_resources()
+
+
 def test_output_is_image_model(output_model):
     # DMS414
     assert isinstance(output_model, rdm.datamodels.ImageModel)
@@ -74,7 +79,6 @@ def test_output_has_16_resultants(output_model):
         ("assign_wcs", "COMPLETE"),
         ("dark", "COMPLETE"),
         ("dq_init", "COMPLETE"),
-        ("jump", "COMPLETE"),
         ("linearity", "COMPLETE"),
         ("ramp_fit", "COMPLETE"),
         ("saturation", "COMPLETE"),

@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 import roman_datamodels as rdm
 
 from romancal.refpix import refpix
 from romancal.stpipe import RomanStep
+
+if TYPE_CHECKING:
+    from typing import ClassVar
 
 __all__ = ["RefPixStep"]
 
@@ -17,6 +23,8 @@ class RefPixStep(RomanStep):
         pixels
     """
 
+    class_alias = "refpix"
+
     spec = """
     remove_offset = boolean(default=True) # Turn on or off removing the data offset
     # prior to the reference pixel correction, then returning the offset afterwords.
@@ -28,7 +36,7 @@ class RefPixStep(RomanStep):
     # of the reference pixel padded values.
     """
 
-    reference_file_types = ["refpix"]
+    reference_file_types: ClassVar = ["refpix"]
 
     def process(self, input):
         """
@@ -47,8 +55,8 @@ class RefPixStep(RomanStep):
 
         # Check for a valid reference file
         if ref_file == "N/A":
-            self.log.warning("No REFPIX reference file found")
-            self.log.warning("Reference pixel correction step will be skipped")
+            log.warning("No REFPIX reference file found")
+            log.warning("Reference pixel correction step will be skipped")
             result = datamodel
             result.meta.cal_step.refpix = "SKIPPED"
             return result

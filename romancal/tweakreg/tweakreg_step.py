@@ -2,22 +2,38 @@
 Roman pipeline step for image alignment.
 """
 
+from __future__ import annotations
+
+import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from astropy.table import Table
 from roman_datamodels import datamodels as rdm
 from stcal.tweakreg import tweakreg
-from stcal.tweakreg.tweakreg import _SINGLE_GROUP_REFCAT_STR, SINGLE_GROUP_REFCAT
+from stcal.tweakreg.tweakreg import (
+    _SINGLE_GROUP_REFCAT_STR,
+    SINGLE_GROUP_REFCAT,
+    TweakregError,
+)
+
+from romancal.assign_wcs.utils import add_s_region
+from romancal.lib.save_wcs import save_wfiwcs
 
 # LOCAL
 from ..datamodels import ModelLibrary
 from ..stpipe import RomanStep
 
+if TYPE_CHECKING:
+    from typing import ClassVar
+
 DEFAULT_ABS_REFCAT = SINGLE_GROUP_REFCAT[0]
 
 __all__ = ["TweakRegStep"]
+
+log = logging.getLogger(__name__)
 
 
 class TweakRegStep(RomanStep):
@@ -58,12 +74,12 @@ class TweakRegStep(RomanStep):
         abs_sigma = float(min=0.0, default=3.0) # Clipping limit in sigma units when performing absolute astrometry
         output_use_model = boolean(default=True)  # When saving use `DataModel.meta.filename`
         update_source_catalog_coordinates = boolean(default=False) # Update source catalog file with tweaked coordinates?
-    """  # noqa: E501
+        vo_timeout = float(min=0, default=120.) # VO catalog service timeout.
+    """
 
-    reference_file_types = []
+    reference_file_types: ClassVar = []
 
     def process(self, input):
-
         # properly handle input
         try:
             if isinstance(input, rdm.DataModel):
@@ -79,18 +95,19 @@ class TweakRegStep(RomanStep):
                 "Input to tweakreg must be a list of DataModels, an "
                 "association, or an already open ModelLibrary "
                 "containing one or more DataModels.",
-            ) + e.args[1:]
+                *e.args[1:],
+            )
             raise e
 
         if not images:
             raise ValueError("Input must contain at least one image model.")
 
-        self.log.info(
+        log.info(
             f"Number of image groups to be aligned: {len(images.group_indices):d}."
         )
-        self.log.info("Image groups:")
+        log.info("Image groups:")
         for name in images.group_names:
-            self.log.info(f"  {name}")
+            log.info(f"  {name}")
         # set the first image as reference
         with images:
             ref_image = images.borrow(0)
@@ -103,7 +120,7 @@ class TweakRegStep(RomanStep):
         # valid 'catfile' file name that has no custom catalogs,
         # turn off the use of custom catalogs:
         if catdict is not None and not catdict:
-            self.log.warning(
+            log.warning(
                 "'use_custom_catalogs' is set to True but 'catfile' "
                 "contains no user catalogs."
             )
@@ -121,7 +138,7 @@ class TweakRegStep(RomanStep):
                         # that setting a catalog via an association does not work. Is this
                         # intended? If so, the container can be updated to not support that.
                         model = images.borrow(i)
-                        model.meta["source_detection"] = {
+                        model.meta["source_catalog"] = {
                             "tweakreg_catalog_name": catdict[filename],
                         }
                         images.shelve(model, i)
@@ -132,7 +149,7 @@ class TweakRegStep(RomanStep):
         if len(self.catalog_path) == 0:
             self.catalog_path = os.getcwd()
         self.catalog_path = Path(self.catalog_path).as_posix()
-        self.log.info(f"All source catalogs will be saved to: {self.catalog_path}")
+        log.info(f"All source catalogs will be saved to: {self.catalog_path}")
 
         # set reference catalog name
         if not self.abs_refcat:
@@ -146,35 +163,35 @@ class TweakRegStep(RomanStep):
             for i, image_model in enumerate(images):
                 exposure_type = image_model.meta.exposure.type
                 if exposure_type != "WFI_IMAGE":
-                    self.log.info("Skipping TweakReg for spectral exposure.")
+                    log.info("Skipping TweakReg for spectral exposure.")
                     image_model.meta.cal_step.tweakreg = "SKIPPED"
                 else:
-                    source_detection = getattr(
-                        image_model.meta, "source_detection", None
-                    )
-                    if source_detection is None:
+                    source_catalog = getattr(image_model.meta, "source_catalog", None)
+                    if source_catalog is None:
                         images.shelve(image_model, i, modify=False)
                         raise AttributeError(
-                            "Attribute 'meta.source_detection' is missing. "
-                            "Please either run SourceDetectionStep or provide a custom source catalog."
+                            "Attribute 'meta.source_catalog' is missing. "
+                            "Please either run SourceCatalogStep or provide a custom source catalog."
                         )
 
                     try:
-                        catalog = self.get_tweakreg_catalog(
-                            source_detection, image_model
-                        )
+                        catalog = self.get_tweakreg_catalog(source_catalog, image_model)
                     except AttributeError as e:
-                        self.log.error(f"Failed to retrieve tweakreg_catalog: {e}")
+                        log.error(f"Failed to retrieve tweakreg_catalog: {e}")
                         images.shelve(image_model, i, modify=False)
                         raise e
 
-                    try:
-                        # validate catalog columns
-                        _validate_catalog_columns(catalog)
-                    except ValueError as e:
-                        self.log.error(f"Failed to validate catalog columns: {e}")
-                        images.shelve(image_model, i, modify=False)
-                        raise e
+                    if len(catalog) == 0:
+                        _add_required_columns(catalog)
+                        # for empty catalogs, SourceCatalog omits xpsf & ypsf; add them
+
+                    # validate catalog columns
+                    if not _validate_catalog_columns(catalog):
+                        raise ValueError("""
+                        'tweakreg' source catalogs must contain a header
+                        with columns named either 'x' and 'y' or
+                        'x_psf' and 'y_psf'. Neither were found in the
+                        catalog provided.""")
 
                     catalog = tweakreg.filter_catalog_by_bounding_box(
                         catalog, image_model.meta.wcs.bounding_box
@@ -190,7 +207,7 @@ class TweakRegStep(RomanStep):
 
                     image_model.meta["tweakreg_catalog"] = catalog.as_array()
                     nsources = len(catalog)
-                    self.log.info(
+                    log.info(
                         f"Detected {nsources} sources in {image_model.meta.filename}."
                         if nsources
                         else f"No sources found in {image_model.meta.filename}."
@@ -208,7 +225,7 @@ class TweakRegStep(RomanStep):
                         wcs=image_model.meta.wcs,
                         refang=image_model.meta.wcsinfo,
                         catalog=catalog_table,
-                        group_id=image_model.meta.group_id,
+                        group_id=images._model_to_group_id(image_model),
                     )
                     imcat.meta["model_index"] = i
                     imcats.append(imcat)
@@ -218,16 +235,23 @@ class TweakRegStep(RomanStep):
         if len(imcats):
             # extract WCS correctors to use for image alignment
             if len(images.group_indices) > 1:
-                self.do_relative_alignment(imcats)
+                try:
+                    self.do_relative_alignment(imcats)
+                except TweakregError as e:
+                    log.warning(str(e))
 
             if self.abs_refcat in SINGLE_GROUP_REFCAT:
-                self.do_absolute_alignment(ref_image, imcats)
+                try:
+                    self.do_absolute_alignment(ref_image, imcats)
+                except TweakregError as e:
+                    log.warning(str(e))
+                    return images
 
             # finalize step
             with images:
                 for imcat in imcats:
                     image_model = images.borrow(imcat.meta["model_index"])
-                    image_model.meta.cal_step["tweakreg"] = "COMPLETE"
+                    image_model.meta.cal_step.tweakreg = "COMPLETE"
                     # remove source catalog
                     del image_model.meta["tweakreg_catalog"]
 
@@ -252,7 +276,7 @@ class TweakRegStep(RomanStep):
                         wcs_fit_results = {
                             k: (
                                 v.tolist()
-                                if isinstance(v, (np.ndarray, np.bool_))
+                                if isinstance(v, np.ndarray | np.bool_)
                                 else v
                             )
                             for k, v in imcat.meta["fit_info"].items()
@@ -270,10 +294,19 @@ class TweakRegStep(RomanStep):
                         ]:
                             del image_model.meta["wcs_fit_results"][k]
 
+                        # update WCS
                         image_model.meta.wcs = imcat.wcs
+                        # update S_REGION
+                        add_s_region(image_model)
+
                     images.shelve(image_model, imcat.meta["model_index"])
 
         return images
+
+    def save_model(self, result, *args, **kwargs):
+        if isinstance(result, ModelLibrary):
+            save_wfiwcs(self, result, force=True)
+        super().save_model(result, *args, **kwargs)
 
     def update_catalog_coordinates(self, tweakreg_catalog_name, tweaked_wcs):
         """
@@ -323,9 +356,12 @@ class TweakRegStep(RomanStep):
         """
         Reads a source catalog from a specified file.
 
-        This function determines the format of the catalog based on the file extension.
-        If the file ends with "asdf", it uses a specific method to open and read the catalog;
-        otherwise, it reads the catalog using a standard table format.
+        This function determines the format of the catalog based on the
+        file extension:
+
+        * "asdf":  uses roman datamodels
+        * "parquet":  uses pyarrow
+        * otherwise:  uses astropy Table.
 
         Parameters
         ----------
@@ -342,14 +378,18 @@ class TweakRegStep(RomanStep):
         ValueError
             If the catalog format is unsupported.
         """
+        filetype = (
+            "parquet" if catalog_name.endswith("parquet") else self.catalog_format
+        )
         if catalog_name.endswith("asdf"):
+            # leave this for now
             with rdm.open(catalog_name) as source_catalog_model:
                 catalog = source_catalog_model.source_catalog
         else:
-            catalog = Table.read(catalog_name, format=self.catalog_format)
+            catalog = Table.read(catalog_name, format=filetype)
         return catalog
 
-    def get_tweakreg_catalog(self, source_detection, image_model):
+    def get_tweakreg_catalog(self, source_catalog, image_model):
         """
         Retrieve the tweakreg catalog from source detection.
 
@@ -359,8 +399,8 @@ class TweakRegStep(RomanStep):
 
         Parameters
         ----------
-        source_detection : object
-            The source detection metadata containing catalog information.
+        source_catalog : object
+            The source catalog metadata containing catalog information.
         image_model : DataModel
             The image model associated with the source detection.
 
@@ -374,18 +414,22 @@ class TweakRegStep(RomanStep):
         AttributeError
             If the required catalog information is missing from the source detection.
         """
-        if getattr(source_detection, "tweakreg_catalog", None):
-            tweakreg_catalog = Table(np.asarray(source_detection.tweakreg_catalog))
-            del image_model.meta.source_detection["tweakreg_catalog"]
+        twk_cat = getattr(source_catalog, "tweakreg_catalog", None)
+        twk_cat_name = getattr(source_catalog, "tweakreg_catalog_name", None)
+
+        if twk_cat is not None:
+            tweakreg_catalog = Table(np.asarray(source_catalog.tweakreg_catalog))
+            del image_model.meta.source_catalog["tweakreg_catalog"]
             return tweakreg_catalog
 
-        if getattr(source_detection, "tweakreg_catalog_name", None):
-            return self.read_catalog(source_detection.tweakreg_catalog_name)
+        elif twk_cat_name is not None:
+            return self.read_catalog(source_catalog.tweakreg_catalog_name)
 
-        raise AttributeError(
-            "Attribute 'meta.source_detection.tweakreg_catalog' is missing. "
-            "Please either run SourceDetectionStep or provide a custom source catalog."
-        )
+        else:
+            raise AttributeError(
+                "Attribute 'meta.source_catalog.tweakreg_catalog' is missing. "
+                "Please either run SourceCatalogStep or provide a custom source catalog."
+            )
 
     def do_relative_alignment(self, imcats):
         """
@@ -445,7 +489,7 @@ class TweakRegStep(RomanStep):
             self.abs_refcat,
             ref_wcs=ref_image.meta.wcs,
             ref_wcsinfo=ref_image.meta.wcsinfo,
-            epoch=ref_image.meta.exposure.mid_time.decimalyear,
+            epoch=ref_image.meta.exposure.start_time.decimalyear,
             abs_minobj=self.abs_minobj,
             abs_fitgeometry=self.abs_fitgeometry,
             abs_nclip=self.abs_nclip,
@@ -457,6 +501,7 @@ class TweakRegStep(RomanStep):
             save_abs_catalog=self.save_abs_catalog,
             abs_catalog_output_dir=self.output_dir,
             clip_accum=True,
+            timeout=self.vo_timeout,
         )
 
 
@@ -511,38 +556,48 @@ def _parse_catfile(catfile):
     return catdict
 
 
-def _validate_catalog_columns(catalog):
+def _validate_catalog_columns(catalog) -> bool:
     """
     Validate the presence of required columns in the catalog.
 
     This method checks if the specified axis column exists in the catalog.
-    If the axis is not found, it looks for a corresponding centroid column
+    If the axis is not found, it looks for a corresponding psf column
     and renames it if present. If neither is found, it raises an error.
 
     Parameters
     ----------
     catalog : Table
         The catalog to validate, which should contain source information.
-    axis : str
-        The axis to check for in the catalog (e.g., 'x' or 'y').
+
+    Returns
+    -------
+    True if all the required columns are present, False otherwise.
+
+    """
+    for axis in ["x", "y"]:
+        if axis not in catalog.colnames:
+            long_axis = f"{axis}_psf"
+            if long_axis in catalog.colnames:
+                catalog.rename_column(long_axis, axis)
+            else:
+                return False
+    return True
+
+
+def _add_required_columns(catalog):
+    """
+    Updates the input catalog with the required columns based on the standard output from SourceCatalogStep.
+
+    The centroid coordinates are always present in the standard output from SourceCatalogStep.
+
+    Parameters
+    ----------
+    catalog : Table
+        The catalog to validate, which should contain source information.
 
     Returns
     -------
     None
-
-    Raises
-    ------
-    ValueError
-        If the required columns are missing from the catalog.
     """
-    for axis in ["x", "y"]:
-        if axis not in catalog.colnames:
-            long_axis = f"{axis}centroid"
-            if long_axis in catalog.colnames:
-                catalog.rename_column(long_axis, axis)
-            else:
-                raise ValueError(
-                    "'tweakreg' source catalogs must contain a header with "
-                    "columns named either 'x' and 'y' or 'xcentroid' and 'ycentroid'."
-                )
-    return catalog
+    catalog["x"] = catalog["x_centroid"]
+    catalog["y"] = catalog["y_centroid"]

@@ -52,6 +52,10 @@ develop-eggs
 .installed.cfg
 distribute-*.tar.gz
 
+# emacs save files
+\#*
+.#*
+
 # Other
 .cache
 .tox
@@ -66,3 +70,4 @@ pip-wheel-metadata/
 .DS_Store
 
 .python-version
+.env

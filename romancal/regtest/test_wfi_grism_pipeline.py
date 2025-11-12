@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,7 @@ from numpy.testing import assert_allclose
 from roman_datamodels.dqflags import pixel
 
 from romancal.assign_wcs.assign_wcs_step import AssignWcsStep
+from romancal.lib.suffix import replace_suffix
 from romancal.pipeline.exposure_pipeline import ExposurePipeline
 
 from .regtestdata import compare_asdf
@@ -16,21 +18,22 @@ pytestmark = [pytest.mark.bigdata, pytest.mark.soctests]
 
 
 @pytest.fixture(scope="module")
-def run_elp(rtdata_module):
+def run_elp(rtdata_module, resource_tracker):
     rtdata = rtdata_module
 
-    input_data = "r0000201001001001001_0001_WFI01_uncal.asdf"
+    input_data = "r0000201001001001001_0001_wfi01_grism_uncal.asdf"
     rtdata.get_data(f"WFI/grism/{input_data}")
     rtdata.input = input_data
 
     # Test Pipeline
-    output = "r0000201001001001001_0001_WFI01_cal.asdf"
+    output = "r0000201001001001001_0001_wfi01_grism_cal.asdf"
     rtdata.output = output
     args = [
         "roman_elp",
         rtdata.input,
     ]
-    ExposurePipeline.from_cmdline(args)
+    with resource_tracker.track():
+        ExposurePipeline.from_cmdline(args)
     rtdata.get_truth(f"truth/WFI/grism/{output}")
     return rtdata
 
@@ -80,6 +83,10 @@ def repointed_filename_and_delta(output_filename):
     return repointed_filename, delta
 
 
+def test_log_tracked_resources(log_tracked_resources, run_elp):
+    log_tracked_resources()
+
+
 def test_output_matches_truth(output_filename, truth_filename, ignore_asdf_paths):
     diff = compare_asdf(output_filename, truth_filename, **ignore_asdf_paths)
     assert diff.identical, diff.report()
@@ -91,7 +98,6 @@ def test_output_matches_truth(output_filename, truth_filename, ignore_asdf_paths
         ("assign_wcs", "COMPLETE"),
         ("dark", "COMPLETE"),
         ("dq_init", "COMPLETE"),
-        ("jump", "COMPLETE"),
         ("linearity", "COMPLETE"),
         ("ramp_fit", "COMPLETE"),
         ("saturation", "COMPLETE"),
@@ -99,7 +105,7 @@ def test_output_matches_truth(output_filename, truth_filename, ignore_asdf_paths
         # skipped
         ("flat_field", "SKIPPED"),
         ("photom", "SKIPPED"),
-        ("source_detection", "SKIPPED"),
+        ("source_catalog", "SKIPPED"),
         ("tweakreg", "SKIPPED"),
     ),
 )
@@ -154,3 +160,14 @@ def test_repointed_wcs_differs(repointed_filename_and_delta, output_model):
             repointed_model.meta.wcs(2048, 2048),
             atol=1.0,
         )
+
+
+def test_wfiwcs_exists(run_elp):
+    output_path = Path(run_elp.output)
+    wcs_filename = replace_suffix(output_path.stem, "wcs") + output_path.suffix
+    wcs_path = output_path.parent / wcs_filename
+
+    # check to make sure that we are making the required WCS grism products
+    # In principle these also need things like updated ephemeris, but that
+    # requires a database connection we're not making here.
+    assert os.path.exists(wcs_path)

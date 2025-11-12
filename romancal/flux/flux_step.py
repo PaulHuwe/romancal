@@ -1,11 +1,17 @@
 """Apply the flux scaling"""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from roman_datamodels import datamodels
 
 from ..datamodels import ModelLibrary
 from ..stpipe import RomanStep
+
+if TYPE_CHECKING:
+    from typing import ClassVar
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
@@ -34,12 +40,14 @@ class FluxStep(RomanStep):
     Notes
     -----
     Currently, the correction is done in-place; the inputs are directly modified if in-memory DataModels are input.
-    """  # noqa: E501
+    """
+
+    class_alias = "flux"
 
     spec = """
-    """  # noqa: E501
+    """
 
-    reference_file_types = []
+    reference_file_types: ClassVar = []
 
     def process(self, input):
         if isinstance(input, datamodels.DataModel):
@@ -97,7 +105,9 @@ def apply_flux_correction(model):
     """
     # Define the various arrays to be converted.
     DATA = ("data", "err")
-    VARIANCES = ("var_rnoise", "var_poisson", "var_flat")
+    VARIANCES = ("var_rnoise", "var_poisson")
+    if hasattr(model, "var_flat"):
+        VARIANCES = (*VARIANCES, "var_flat")
 
     if model.meta.cal_step["flux"] == "COMPLETE":
         message = (
@@ -113,6 +123,6 @@ def apply_flux_correction(model):
     log.debug("Flux correction being applied")
     c_mj = model.meta.photometry.conversion_megajanskys
     for data in DATA:
-        model[data] = model[data] * c_mj
+        model[data] *= c_mj
     for variance in VARIANCES:
-        model[variance] = model[variance] * c_mj**2
+        model[variance] *= c_mj**2

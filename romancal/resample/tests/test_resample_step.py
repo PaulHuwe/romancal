@@ -1,71 +1,22 @@
+from functools import reduce
+
 import numpy as np
 import pytest
 from asdf import AsdfFile
 from astropy import coordinates as coord
 from astropy import units as u
 from astropy.modeling import models
+from astropy.table import Table
+from astropy.time import Time
 from gwcs import WCS
 from gwcs import coordinate_frames as cf
-from roman_datamodels import datamodels, maker_utils
+from roman_datamodels import datamodels
 
-from romancal.resample import ResampleStep, resample_utils
-
-
-class MockModel:
-    def __init__(self, pixelarea_steradians, pixelarea_arcsecsq, pixel_scale_ratio):
-        self.meta = MockMeta(
-            pixelarea_steradians, pixelarea_arcsecsq, pixel_scale_ratio
-        )
-
-
-class MockMeta:
-    def __init__(self, pixelarea_steradians, pixelarea_arcsecsq, pixel_scale_ratio):
-        self.photometry = MockPhotometry(pixelarea_steradians, pixelarea_arcsecsq)
-        self.resample = MockResample(pixel_scale_ratio)
-
-
-class MockPhotometry:
-    def __init__(self, pixelarea_steradians, pixelarea_arcsecsq):
-        self.pixelarea_steradians = pixelarea_steradians
-        self.pixelarea_arcsecsq = pixelarea_arcsecsq
-
-
-class MockResample:
-    def __init__(self, pixel_scale_ratio):
-        self.pixel_scale_ratio = pixel_scale_ratio
-
-
-class Mosaic:
-    def __init__(self, fiducial_world, pscale, shape, filename, n_images):
-        self.fiducial_world = fiducial_world
-        self.pscale = pscale
-        self.shape = shape
-        self.filename = filename
-        self.n_images = n_images
-
-    def create_mosaic(self):
-        """
-        Create a dummy L3 datamodel given the coordinates of the fiducial point,
-        a pixel scale, and the image shape and filename.
-
-        Returns
-        -------
-        datamodels.MosaicModel
-            An L3 MosaicModel datamodel.
-        """
-        l3 = maker_utils.mk_level3_mosaic(
-            shape=self.shape,
-            n_images=self.n_images,
-        )
-        # data from WFISim simulation of SCA #01
-        l3.meta.filename = self.filename
-        l3.meta["wcs"] = create_wcs_object_without_distortion(
-            fiducial_world=self.fiducial_world,
-            pscale=self.pscale,
-            shape=self.shape,
-        )
-        l3.meta.wcs.forward_transform
-        return datamodels.MosaicModel(l3)
+from romancal.assign_wcs.utils import add_s_region
+from romancal.datamodels import ModelLibrary
+from romancal.regtest import util
+from romancal.resample import ResampleStep
+from romancal.resample.l3_wcs import l3wcsinfo_to_wcs
 
 
 def create_wcs_object_without_distortion(fiducial_world, pscale, shape, **kwargs):
@@ -153,21 +104,6 @@ def asdf_wcs_file():
     return _create_asdf_wcs_file
 
 
-@pytest.mark.parametrize(
-    "vals, name, min_vals, expected",
-    [
-        ([1, 2], "list1", None, [1, 2]),
-        ([None, None], "list2", None, None),
-        ([1, 2], "list4", [0, 0], [1, 2]),
-    ],
-)
-def test_check_list_pars_valid(vals, name, min_vals, expected):
-    step = ResampleStep()
-
-    result = step._check_list_pars(vals, name, min_vals)
-    assert result == expected
-
-
 def test_load_custom_wcs_no_file():
     step = ResampleStep()
     result = step._load_custom_wcs(None, (512, 512))
@@ -201,129 +137,16 @@ def test_load_custom_wcs_asdf_without_wcs_attribute(tmp_path):
         step._load_custom_wcs(str(file_path), (100, 100))
 
 
-@pytest.mark.parametrize(
-    "vals, name, min_vals, expected",
-    [
-        ([1, 2], "test", [0, 0], [1, 2]),
-        ([None, None], "test", [0, 0], None),
-        ([0, 0], "test", [0, 0], [0, 0]),
-        ([1, 1], "test", [0, 0], [1, 1]),
-        ([0, 1], "test", [0, 0], [0, 1]),
-        ([1, 0], "test", [0, 0], [1, 0]),
-    ],
-)
-def test_check_list_pars(vals, name, min_vals, expected):
-    step = ResampleStep()
+def test_wcs_wcsinfo_matches(base_image):
+    model = base_image()
+    img = datamodels.ImageModel(model)
+    add_s_region(img)
 
-    result = step._check_list_pars(vals, name, min_vals)
-    assert result == expected
+    output_model = ResampleStep().run(img)
 
-
-@pytest.mark.parametrize(
-    "vals, name, min_vals",
-    [
-        ([None, 2], "test", [0, 0]),
-        ([1, None], "test", [0, 0]),
-        ([1], "test", [0, 0]),
-        ([1, 2, 3], "test", [0, 0]),
-        ([None, None, None], "test", [0, 0]),
-        ([1, 2], "test", [2, 2]),
-    ],
-)
-def test_check_list_pars_exception(vals, name, min_vals):
-    step = ResampleStep()
-
-    with pytest.raises(ValueError):
-        step._check_list_pars(vals, name, min_vals)
-
-
-@pytest.mark.parametrize(
-    """pixelarea_steradians, pixelarea_arcsecsq, pixel_scale_ratio,
-    expected_steradians, expected_arcsecsq""",
-    [
-        # Happy path tests
-        (1.0, 1.0, 2.0, 4.0, 4.0),
-        (2.0, 2.0, 0.5, 0.5, 0.5),
-        (0.0, 0.0, 2.0, 0.0, 0.0),
-        (1.0, 1.0, 0.0, 0.0, 0.0),
-        (None, 1.0, 2.0, None, 4.0),
-        (1.0, None, 2.0, 4.0, None),
-    ],
-)
-def test_update_phot_keywords(
-    pixelarea_steradians,
-    pixelarea_arcsecsq,
-    pixel_scale_ratio,
-    expected_steradians,
-    expected_arcsecsq,
-):
-    step = ResampleStep()
-    model = MockModel(pixelarea_steradians, pixelarea_arcsecsq, pixel_scale_ratio)
-
-    step.update_phot_keywords(model)
-
-    assert model.meta.photometry.pixelarea_steradians == expected_steradians
-    assert model.meta.photometry.pixelarea_arcsecsq == expected_arcsecsq
-
-
-@pytest.mark.parametrize(
-    "good_bits, dq_array, expected_output",
-    [
-        (
-            "~DO_NOT_USE+NON_SCIENCE",
-            np.array([[0, 2**0, 0], [0, 2**13, 0], [0, 2**9, 0]]),
-            np.array([[1, 0, 1], [1, 1, 1], [1, 0, 1]]),
-        ),
-        (
-            "~513",
-            np.array([[0, 2**0, 0], [2**13, 0, 0], [0, 0, 2**9]]),
-            np.array([[1, 0, 1], [1, 1, 1], [1, 1, 0]]),
-        ),
-        (
-            "~1+512",
-            np.array([[2**13, 0, 0], [0, 0, 2**9], [0, 2**0, 0]]),
-            np.array([[1, 1, 1], [1, 1, 0], [1, 0, 1]]),
-        ),
-        (
-            "~1,512",
-            np.array([[2**13, 2**0, 2**9], [0, 0, 0], [0, 0, 0]]),
-            np.array([[1, 0, 0], [1, 1, 1], [1, 1, 1]]),
-        ),
-        (
-            "LOW_QE+NONLINEAR",
-            np.array([[2**13, 2**0, 2**16], [0, 0, 0], [0, 0, 0]]),
-            np.array([[1, 0, 1], [1, 1, 1], [1, 1, 1]]),
-        ),
-        (
-            "73728",
-            np.array([[0, 0, 0], [0, 2**13, 2**0], [0, 2**16, 0]]),
-            np.array([[1, 1, 1], [1, 1, 0], [1, 1, 1]]),
-        ),
-        (
-            "8192+65536",
-            np.array([[0, 0, 0], [0, 2**13, 0], [2**0, 2**16, 0]]),
-            np.array([[1, 1, 1], [1, 1, 1], [0, 1, 1]]),
-        ),
-        (
-            "8192,65536",
-            np.array([[0, 0, 0], [0, 2**13, 0], [0, 2**16, 2**0]]),
-            np.array([[1, 1, 1], [1, 1, 1], [1, 1, 0]]),
-        ),
-    ],
-)
-def test_build_driz_weight_multiple_good_bits(
-    base_image, good_bits, dq_array, expected_output
-):
-    data_shape = dq_array.shape
-    img1 = base_image()
-    img1.dq = dq_array
-    img1.data = np.ones(data_shape)
-
-    result = resample_utils.build_driz_weight(
-        img1, weight_type=None, good_bits=good_bits
-    )
-
-    np.testing.assert_array_equal(result, expected_output)
+    wcs_from_wcsinfo = l3wcsinfo_to_wcs(output_model.meta.wcsinfo)
+    ra_mad, dec_mad = util.comp_wcs_grids_arcs(output_model.meta.wcs, wcs_from_wcsinfo)
+    assert (ra_mad + dec_mad) / 2.0 < 1.0e-5
 
 
 @pytest.mark.parametrize(
@@ -340,37 +163,155 @@ def test_build_driz_weight_multiple_good_bits(
     ],
 )
 def test_set_good_bits_in_resample_meta(base_image, good_bits):
-    model = maker_utils.mk_level2_image(shape=(100, 100))
+    model = base_image()
     model.meta.wcsinfo["vparity"] = -1
+    model.meta.wcs.bounding_box = (-0.5, 99.5), (-0.5, 99.5)
 
     img = datamodels.ImageModel(model)
+    add_s_region(img)
 
     img.data *= img.meta.photometry.conversion_megajanskys / img.data
 
-    step = ResampleStep
-
-    res = step.call(img, good_bits=good_bits)
+    step = ResampleStep(good_bits=good_bits)
+    res = step.run(img)
 
     assert res.meta.resample.good_bits == good_bits
 
 
-@pytest.mark.parametrize("weight_type", ["ivm", "exptime", None])
-def test_build_driz_weight_different_weight_type(base_image, weight_type):
-    rng = np.random.default_rng()
-    img1 = base_image()
-    # update attributes that will be used in building the weight array
-    img1.meta.exposure.exposure_time = 10
-    img1.var_rnoise = rng.normal(1, 0.1, size=img1.shape)
-    # build the drizzle weight array
-    result = resample_utils.build_driz_weight(
-        img1, weight_type=weight_type, good_bits="~DO_NOT_USE+NON_SCIENCE"
+def test_individual_image_meta(base_image):
+    """Test that the individual_image_meta is being populated"""
+    models = [base_image() for _ in range(2)]
+    # add a None value
+    models[0].meta.photometry.pixel_area = None
+    models[1].meta.photometry.pixel_area = 1
+
+    # add "extra" stuff (similar to "wcs_fit_results")
+    # this will end up in the "basic" table
+    models[1].meta["extra"] = {}
+    models[1].meta.extra = {"a": 1}
+
+    # remove "background" from one model
+    del models[0].meta["background"]
+
+    input_models = ModelLibrary(models)
+    output_model = ResampleStep().run(input_models)
+
+    # Check that blended table doesn't make model invalid
+    output_model.validate()
+
+    # Assert sizes are expected
+    n_inputs = len(input_models)
+    for value in output_model.meta.individual_image_meta.values():
+        assert type(value) is Table
+        assert len(value) == n_inputs
+
+    # Assert spot check on filename, which is different for each mock input
+    basic_table = output_model.meta.individual_image_meta.basic
+    with input_models:
+        for idx, input in enumerate(input_models):
+            assert input.meta.filename == basic_table["filename"][idx]
+            input_models.shelve(input, index=idx)
+
+    output_tables = output_model.meta.individual_image_meta
+
+    assert "background" in output_tables
+
+    assert "photometry" in output_tables
+    assert np.isnan(output_tables["photometry"]["pixel_area"][0])
+    assert output_tables["photometry"]["pixel_area"][1] == 1
+
+    assert "extra" not in output_tables
+    assert "extra" not in output_tables["basic"].colnames
+
+
+@pytest.mark.parametrize(
+    "meta_overrides, expected",
+    [
+        (  # 2 exposures, share visit, etc
+            (
+                {
+                    "meta.observation.visit": 1,
+                    "meta.observation.pass": 1,
+                    "meta.observation.segment": 1,
+                    "meta.observation.program": 1,
+                    "meta.instrument.optical_element": "F158",
+                    "meta.instrument.name": "WFI",
+                },
+                {
+                    "meta.observation.visit": 1,
+                    "meta.observation.pass": 1,
+                    "meta.observation.segment": 1,
+                    "meta.observation.program": 1,
+                    "meta.instrument.optical_element": "F158",
+                    "meta.instrument.name": "WFI",
+                },
+            ),
+            {
+                "meta.observation.visit": 1,
+                "meta.observation.pass": 1,
+                "meta.observation.segment": 1,
+                "meta.instrument.optical_element": "F158",
+                "meta.instrument.name": "WFI",
+            },
+        ),
+        (  # 2 exposures, different metadata
+            (
+                {
+                    "meta.observation.visit": 1,
+                    "meta.observation.pass": 1,
+                    "meta.observation.segment": 1,
+                    "meta.observation.program": 1,
+                    "meta.instrument.optical_element": "F158",
+                    "meta.instrument.name": "WFI",
+                },
+                {
+                    "meta.observation.visit": 2,
+                    "meta.observation.pass": 2,
+                    "meta.observation.segment": 2,
+                    "meta.observation.program": 2,
+                    "meta.instrument.optical_element": "F062",
+                    "meta.instrument.name": "WFI",
+                },
+            ),
+            {
+                "meta.observation.visit": None,
+                "meta.observation.pass": None,
+                "meta.observation.segment": None,
+                "meta.instrument.optical_element": None,
+                "meta.instrument.name": "WFI",
+            },
+        ),
+    ],
+)
+def test_populate_mosaic_metadata(base_image, meta_overrides, expected):
+    """Test that the mosaic metadata is being populated"""
+    models = []
+    for i, meta_override in enumerate(meta_overrides):
+        model = base_image()
+
+        model.meta.observation.observation_id = i
+
+        model.meta.exposure.start_time = Time(59000 + i, format="mjd")
+        model.meta.exposure.end_time = Time(59001 + i, format="mjd")
+        model.meta.exposure.exposure_time = 3600 * 24
+
+        for key, value in meta_override.items():
+            *parent_keys, child_key = key.split(".")
+            setattr(reduce(getattr, parent_keys, model), child_key, value)
+        models.append(model)
+
+    input_models = ModelLibrary(models)
+    output_model = ResampleStep().run(input_models)
+
+    assert output_model.meta.coadd_info.time_first == models[0].meta.exposure.start_time
+    assert output_model.meta.coadd_info.time_last == models[-1].meta.exposure.end_time
+    assert output_model.meta.coadd_info.time_mean.mjd == np.mean(
+        [m.meta.exposure.start_time.mjd for m in models]
     )
 
-    expected_results = {
-        "ivm": img1.var_rnoise**-1,
-        "exptime": np.ones(img1.shape, dtype=img1.data.dtype)
-        * img1.meta.exposure.exposure_time,
-        None: np.ones(img1.shape, dtype=img1.data.dtype),
-    }
-
-    np.testing.assert_array_almost_equal(expected_results.get(weight_type), result)
+    for key, value in expected.items():
+        *path, final = key.split(".")
+        obj = output_model
+        for sub_path in path:
+            obj = obj[sub_path]
+        assert obj[final] == value

@@ -11,9 +11,9 @@ from stcal.outlier_detection.utils import (
     flag_resampled_crs,
     gwcs_blot,
 )
+from stcal.resample.utils import build_driz_weight
 
 from romancal.resample.resample import ResampleData
-from romancal.resample.resample_utils import build_driz_weight
 
 from . import _fileio
 
@@ -58,31 +58,23 @@ def _median_with_resampling(
         set to False. If None or 0 the buffer size will be set to the size of one
         resampled image.
     """
-    if not resamp.single:
-        raise ValueError(
-            "median_with_resampling should only be used for resample_many_to_many"
-        )
-
     in_memory = not input_models._on_disk
     indices_by_group = list(input_models.group_indices.values())
-    ngroups = len(indices_by_group)
-    example_model = None
+    nresultants = len(indices_by_group)
     median_wcs = resamp.output_wcs
 
     with input_models:
         for i, indices in enumerate(indices_by_group):
-
-            drizzled_model = resamp.resample_group(input_models, indices)
+            drizzled_model = resamp.resample_group(indices)
 
             if save_intermediate_results:
                 # write the drizzled model to file
                 _fileio.save_drizzled(drizzled_model, make_output_path)
 
             if i == 0:
-                input_shape = (ngroups,) + drizzled_model.data.shape
+                input_shape = (nresultants, *drizzled_model.data.shape)
                 dtype = drizzled_model.data.dtype
                 computer = MedianComputer(input_shape, in_memory, buffer_size, dtype)
-                example_model = drizzled_model
 
             weight_threshold = compute_weight_threshold(drizzled_model.weight, maskpt)
             drizzled_model.data[drizzled_model.weight < weight_threshold] = np.nan
@@ -95,7 +87,6 @@ def _median_with_resampling(
     if save_intermediate_results:
         # drizzled model already contains asn_id
         _fileio.save_median(
-            example_model,
             median_data,
             median_wcs,
             partial(make_output_path, asn_id=None),
@@ -146,18 +137,17 @@ def _median_without_resampling(
 
     """
     in_memory = not input_models._on_disk
-    ngroups = len(input_models)
-    example_model = None
+    nresultants = len(input_models)
 
     with input_models:
         for i in range(len(input_models)):
-
             model = input_models.borrow(i)
             wht = build_driz_weight(
                 model,
                 # FIXME this was hard-coded to "ivm"
                 weight_type="ivm",
                 good_bits=good_bits,
+                flag_name_map=pixel,
             )
 
             if save_intermediate_results:
@@ -165,10 +155,9 @@ def _median_without_resampling(
                 _fileio.save_drizzled(model, make_output_path)
 
             if i == 0:
-                input_shape = (ngroups,) + model.data.shape
+                input_shape = (nresultants, *model.data.shape)
                 dtype = model.data.dtype
                 computer = MedianComputer(input_shape, in_memory, buffer_size, dtype)
-                example_model = model
                 median_wcs = copy.deepcopy(model.meta.wcs)
 
             weight_threshold = compute_weight_threshold(wht, maskpt)
@@ -184,7 +173,7 @@ def _median_without_resampling(
     median_data = computer.evaluate()
 
     if save_intermediate_results:
-        _fileio.save_median(example_model, median_data, median_wcs, make_output_path)
+        _fileio.save_median(median_data, median_wcs, make_output_path)
 
     return median_data, median_wcs
 
@@ -198,10 +187,17 @@ def _flag_resampled_model_crs(
     scale1,
     scale2,
     backg,
+    fillval,
     save_intermediate_results,
     make_output_path,
 ):
-    blot = gwcs_blot(median_data, median_wcs, image.data.shape, image.meta.wcs, 1.0)
+    if fillval is None or fillval.strip().upper() == "INDEF":
+        fillval = 0
+    else:
+        fillval = float(fillval)
+    blot = gwcs_blot(
+        median_data, median_wcs, image.data.shape, image.meta.wcs, 1.0, fillval
+    )
 
     # Get background level of science data if it has not been subtracted, so it
     # can be added into the level of the blotted data, which has been
@@ -250,6 +246,7 @@ def detect_outliers(
     resample_data,
     good_bits,
     in_memory,
+    resample_on_skycell,
     make_output_path,
 ):
     # setup ResampleData
@@ -257,18 +254,22 @@ def detect_outliers(
     if resample_data:
         resamp = ResampleData(
             library,
-            single=True,
-            blendheaders=False,
+            None,
+            pixfrac,
+            kernel,
+            fillval,
             # FIXME prior code provided weight_type when only wht_type is understood
             # both default to 'ivm' but tests that set this to something else did
             # not change the resampling weight type. For now, disabling it to match
             # the previous behavior.
-            # wht_type=weight_type
-            pixfrac=pixfrac,
-            kernel=kernel,
-            fillval=fillval,
-            good_bits=good_bits,
-            in_memory=in_memory,
+            "ivm",
+            good_bits,
+            False,
+            False,
+            False,
+            False,
+            False,
+            resample_on_skycell,
         )
         median_data, median_wcs = _median_with_resampling(
             library,
@@ -301,6 +302,7 @@ def detect_outliers(
                     scale1,
                     scale2,
                     backg,
+                    fillval,
                     save_intermediate_results,
                     make_output_path,
                 )

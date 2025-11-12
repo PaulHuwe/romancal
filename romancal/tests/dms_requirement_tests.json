@@ -4,7 +4,7 @@
     "romancal.regtest.test_wfi_dq_init.test_dq_init_image_step"
   ],
   "DMS79": [
-    "romancal.regtest.test_wfi_flat_field.test_flat_field_crds_match_image_step"
+    "romancal.regtest.test_wfi_flat_field.test_ref_file_query"
   ],
   "DMS86": [
     "romancal.regtest.test_wfi_image_pipeline.test_steps_ran",
@@ -93,20 +93,38 @@
     "romancal.regtest.test_mos_skycell_pipeline.test_resample_ran"
   ],
   "DMS374": [
-    "romancal.regtest.test_catalog.test_has_field",
+    "romancal.regtest.test_source_catalog.test_has_field",
     "romancal.regtest.test_mos_pipeline.test_file_exists"
   ],
   "DMS375": [
-    "romancal.regtest.test_catalog.test_has_field"
+    "romancal.regtest.test_source_catalog.test_has_field"
   ],
   "DMS376": [
-    "romancal.regtest.test_catalog.test_has_field"
+    "romancal.regtest.test_source_catalog.test_has_field"
   ],
   "DMS386": [
-    "romancal.regtest.test_catalog.test_has_field"
+    "romancal.regtest.test_source_catalog.test_has_field"
   ],
   "DMS387": [
-    "romancal.regtest.test_catalog.test_has_field"
+    "romancal.regtest.test_source_catalog.test_has_field"
+  ],
+  "DMS391": [
+    "romancal.regtest.test_multiband_catalog.test_multiband_catalog"
+  ],
+  "DMS392": [
+    "romancal.regtest.test_multiband_catalog.test_multiband_catalog"
+  ],
+  "DMS393": [
+    "romancal.regtest.test_multiband_catalog.test_multiband_catalog"
+  ],
+  "DMS394": [
+    "romancal.regtest.test_multiband_catalog.test_multiband_catalog"
+  ],
+  "DMS395": [
+    "romancal.regtest.test_multiband_catalog.test_multiband_catalog"
+  ],
+  "DMS399": [
+    "romancal.regtest.test_multiband_catalog.test_multiband_catalog"
   ],
   "DMS400": [
     "romancal.regtest.test_mos_pipeline.test_steps_ran",
@@ -114,6 +132,9 @@
     "romancal.regtest.test_mos_pipeline.test_added_background_level"
   ],
   "DMS405": [
+    "romancal.regtest.test_tweakreg.test_tweakreg"
+  ],
+  "DMS406": [
     "romancal.regtest.test_tweakreg.test_tweakreg"
   ],
   "DMS413": [
@@ -128,5 +149,32 @@
   ],
   "DMS488": [
     "romancal.regtest.test_tweakreg.test_tweakreg"
-  ]
+  ],
+  "DMS531": [
+    "romancal.regtest.test_psf_library.test_psf_library_reffile"
+  ],
+  "DMS532": [
+     "romancal.regtest.test_psf_library.test_psf_library_reffile"
+  ],
+  "DMS533": [
+     "romancal.regtest.test_psf_library.test_psf_library_variability"
+  ],
+  "DMS537": [
+     "romancal.regtest.test_psf_library.test_psf_library_variability"
+  ],
+  "DMS535": [
+    "romancal.regtest.test_psf_library.test_psf_library_crdsfile"
+  ],
+  "DMS536": [
+    "romancal.regtest.test_psf_library.test_psf_library_psfinterp"
+  ],
+  "DMS534": [
+     "romancal.regtest.test_psf_library.test_psf_library_jitter"
+  ],
+  "DMS538": [
+     "romancal.regtest.test_psf_library.test_psf_library_jitter"
+  ],
+  "DMS549": [
+    "romancal.regtest.test_tweakreg.test_tweakreg"
+ ]
 }

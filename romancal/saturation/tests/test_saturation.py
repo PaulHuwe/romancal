@@ -6,8 +6,7 @@ Unit tests for saturation flagging
 
 import numpy as np
 import pytest
-from roman_datamodels import maker_utils
-from roman_datamodels.datamodels import ScienceRawModel
+from roman_datamodels.datamodels import RampModel, SaturationRefModel, ScienceRawModel
 from roman_datamodels.dqflags import group, pixel
 
 from romancal.saturation import SaturationStep
@@ -19,11 +18,11 @@ def test_basic_saturation_flagging(setup_wfi_datamodels):
     threshold given by the reference file."""
 
     # Create inputs, and data and saturation models
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
     satvalue = 60000
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add ramp values up to the saturation limit
     ramp.data[0, 5, 5] = 0
@@ -33,7 +32,7 @@ def test_basic_saturation_flagging(setup_wfi_datamodels):
     ramp.data[4, 5, 5] = 62000
 
     # Set saturation value in the saturation model
-    satmap.data[5, 5] = satvalue * satmap.data.unit
+    satmap.data[5, 5] = satvalue
 
     # Run the pipeline
     output = flag_saturation(ramp, satmap)
@@ -48,11 +47,11 @@ def test_read_pattern_saturation_flagging(setup_wfi_datamodels):
     are allocated into resultants."""
 
     # Create inputs, and data and saturation models
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
     satvalue = 60000
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add ramp values up to the saturation limit
     ramp.data[0, 5, 5] = 0
@@ -77,13 +76,17 @@ def test_read_pattern_saturation_flagging(setup_wfi_datamodels):
     ]
 
     # Set saturation value in the saturation model
-    satmap.data[5, 5] = satvalue * satmap.data.unit
+    satmap.data[5, 5] = satvalue
 
     # Run the pipeline
     output = flag_saturation(ramp, satmap)
 
     # Make sure that groups after the third get flagged
-    assert np.all(output.groupdq[2:, 5, 5] == group.SATURATED)
+    # To accommodate https://github.com/spacetelescope/stcal/pull/321
+    # this test was loosed to be SATURATED | DO_NOT_USE
+    assert np.all(
+        (output.groupdq[2:, 5, 5] & (group.SATURATED | group.DO_NOT_USE)) != 0
+    )
 
 
 def test_ad_floor_flagging(setup_wfi_datamodels):
@@ -91,12 +94,12 @@ def test_ad_floor_flagging(setup_wfi_datamodels):
     negative."""
 
     # Create inputs, and data and saturation models
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
     satvalue = 60000
 
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add ramp values up to the saturation limit
     ramp.data[0, 5, 5] = 0  # Signal at bottom rail - low saturation
@@ -109,7 +112,7 @@ def test_ad_floor_flagging(setup_wfi_datamodels):
     satindxs = [0, 1]
 
     # Set saturation value in the saturation model
-    satmap.data[5, 5] = satvalue * satmap.data.unit
+    satmap.data[5, 5] = satvalue
 
     # Run the pipeline
     output = flag_saturation(ramp, satmap)
@@ -125,12 +128,12 @@ def test_ad_floor_and_saturation_flagging(setup_wfi_datamodels):
     """
 
     # Create inputs, and data and saturation models
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
     satvalue = 60000
 
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add ramp values up to the saturation limit
     ramp.data[0, 5, 5] = 0  # Signal at bottom rail - low saturation
@@ -145,7 +148,7 @@ def test_ad_floor_and_saturation_flagging(setup_wfi_datamodels):
     satindxs = [4]
 
     # Set saturation value in the saturation model
-    satmap.data[5, 5] = satvalue * satmap.data.unit
+    satmap.data[5, 5] = satvalue
 
     # Run the pipeline
     output = flag_saturation(ramp, satmap)
@@ -162,12 +165,12 @@ def test_signal_fluctuation_flagging(setup_wfi_datamodels):
     signal value drops back below saturation."""
 
     # Create inputs, and data and saturation models
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
     satvalue = 60000
 
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add ramp values up to the saturation limit
     ramp.data[0, 5, 5] = 10
@@ -177,7 +180,7 @@ def test_signal_fluctuation_flagging(setup_wfi_datamodels):
     ramp.data[4, 5, 5] = 40000  # Signal drops below saturation limit
 
     # Set saturation value in the saturation model
-    satmap.data[5, 5] = satvalue * satmap.data.unit
+    satmap.data[5, 5] = satvalue
 
     # Run the pipeline
     output = flag_saturation(ramp, satmap)
@@ -191,12 +194,12 @@ def test_all_groups_saturated(setup_wfi_datamodels):
     """Check case where all groups are saturated."""
 
     # Create inputs, and data and saturation models
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
     satvalue = 60000
 
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add ramp values at or above saturation limit
     ramp.data[0, 5, 5] = 60000
@@ -206,7 +209,7 @@ def test_all_groups_saturated(setup_wfi_datamodels):
     ramp.data[4, 5, 5] = 62000
 
     # Set saturation value in the saturation model
-    satmap.data[5, 5] = satvalue * satmap.data.unit
+    satmap.data[5, 5] = satvalue
 
     # Run the pipeline
     output = flag_saturation(ramp, satmap)
@@ -219,13 +222,13 @@ def test_dq_propagation(setup_wfi_datamodels):
     """Check PIXELDQ propagation."""
 
     # Create inputs, data, and saturation maps
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
     dqval1 = 5
     dqval2 = 10
 
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add DQ values to the data and reference file
     ramp.pixeldq[5, 5] = dqval1
@@ -243,12 +246,12 @@ def test_no_sat_check(setup_wfi_datamodels):
     added to the DQ mask and are not flagged as saturated."""
 
     # Create inputs, and data and saturation models
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
     satvalue = 60000
 
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add ramp values up to the saturation limit
     ramp.data[0, 5, 5] = 10
@@ -258,7 +261,7 @@ def test_no_sat_check(setup_wfi_datamodels):
     ramp.data[4, 5, 5] = 62000  # Signal reaches saturation limit
 
     # Set saturation value in the saturation model & DQ value for NO_SAT_CHECK
-    satmap.data[5, 5] = satvalue * satmap.data.unit
+    satmap.data[5, 5] = satvalue
     satmap.dq[5, 5] = pixel.NO_SAT_CHECK
 
     # Also set an existing DQ flag in input science data
@@ -272,7 +275,7 @@ def test_no_sat_check(setup_wfi_datamodels):
     assert np.all(output.groupdq[:, 5, 5] != group.SATURATED)
     # Test that saturation bit is NOT set
     assert np.all(
-        output.groupdq[:, 5, 5] & (1 << group.SATURATED.bit_length() - 1) == 0
+        output.groupdq[:, 5, 5] & (1 << int(group.SATURATED).bit_length() - 1) == 0
     )
     assert output.pixeldq[5, 5] == (pixel.NO_SAT_CHECK + pixel.DO_NOT_USE)
 
@@ -283,11 +286,11 @@ def test_nans_in_mask(setup_wfi_datamodels):
     pixel is set to NO_SAT_CHECK."""
 
     # Create inputs, and data and saturation models
-    ngroups = 5
+    nresultants = 5
     nrows = 20
     ncols = 20
 
-    ramp, satmap = setup_wfi_datamodels(ngroups, nrows, ncols)
+    ramp, satmap = setup_wfi_datamodels(nresultants, nrows, ncols)
 
     # Add ramp values up to the saturation limit
     ramp.data[0, 5, 5] = 10
@@ -297,7 +300,7 @@ def test_nans_in_mask(setup_wfi_datamodels):
     ramp.data[4, 5, 5] = 62000
 
     # Set saturation value for pixel to NaN
-    satmap.data[5, 5] = np.nan * satmap.data.unit
+    satmap.data[5, 5] = np.nan
 
     # Run the pipeline
     output = flag_saturation(ramp, satmap)
@@ -316,18 +319,18 @@ def test_saturation_getbestref(setup_wfi_datamodels):
     shape = (2, 20, 20)
 
     # Create test science raw model
-    wfi_sci_raw = maker_utils.mk_level1_science_raw(shape=shape)
-    wfi_sci_raw.meta.instrument.name = "WFI"
-    wfi_sci_raw.meta.instrument.detector = "WFI01"
-    wfi_sci_raw.meta.instrument.optical_element = "F158"
-    wfi_sci_raw.meta["guidestar"]["gw_window_xstart"] = 1012
-    wfi_sci_raw.meta["guidestar"]["gw_window_xsize"] = 16
-    wfi_sci_raw.meta.exposure.type = "WFI_IMAGE"
-    wfi_sci_raw.data = np.ones(shape, dtype=np.uint16)
-    wfi_sci_raw_model = ScienceRawModel(wfi_sci_raw, dq=True)
+    wfi_sci_raw_model = ScienceRawModel.create_fake_data(shape=shape)
+    wfi_sci_raw_model.meta.instrument.name = "WFI"
+    wfi_sci_raw_model.meta.instrument.detector = "WFI01"
+    wfi_sci_raw_model.meta.instrument.optical_element = "F158"
+    wfi_sci_raw_model.meta["guide_star"]["window_xstart"] = 1012
+    wfi_sci_raw_model.meta["guide_star"]["window_xsize"] = 16
+    wfi_sci_raw_model.meta.exposure.type = "WFI_IMAGE"
+    wfi_sci_raw_model.data = np.ones(shape, dtype=np.uint16)
+    input_model = RampModel.from_science_raw(wfi_sci_raw_model)
 
     # Run the pipeline
-    result = SaturationStep.call(wfi_sci_raw_model, override_saturation="N/A")
+    result = SaturationStep.call(input_model, override_saturation="N/A")
     assert result.meta.cal_step.saturation == "SKIPPED"
 
 
@@ -335,12 +338,21 @@ def test_saturation_getbestref(setup_wfi_datamodels):
 def setup_wfi_datamodels():
     """Set up fake WFI data to test."""
 
-    def _models(ngroups, nrows, ncols):
+    def _models(nresultants, nrows, ncols):
         # Create ramp data
-        ramp_model = maker_utils.mk_ramp(shape=(ngroups, nrows, ncols))
+        ramp_model = RampModel.create_fake_data(shape=(nresultants, nrows, ncols))
+        ramp_model.meta.exposure.read_pattern = [
+            [1],
+            [2, 3],
+            [4],
+            [5, 6, 7, 8],
+            [9, 10],
+            [11],
+        ]
+        ramp_model.pixeldq = np.zeros((nrows, ncols), dtype=ramp_model.pixeldq.dtype)
 
         # Create saturation reference data
-        saturation_model = maker_utils.mk_saturation(shape=(nrows, ncols))
+        saturation_model = SaturationRefModel.create_fake_data(shape=(nrows, ncols))
 
         return ramp_model, saturation_model
 

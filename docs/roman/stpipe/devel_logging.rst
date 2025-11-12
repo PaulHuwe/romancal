@@ -8,16 +8,6 @@ the documentation there.  This document basically outlines some simple
 conventions to follow so that the configuration mechanism described in
 :ref:`user-logging` works.
 
-Logging from a Step or Pipeline
-===============================
-
-Each Step instance (and thus also each Pipeline instance) has a `log`
-member, which is a Python `logging.Logger` instance.  All messages
-from the Step should use this object to log messages.  For example,
-from a `process` method::
-
-    self.log.info("This Step wants to say something")
-
 Logging from library code
 =========================
 
@@ -31,7 +21,7 @@ normal::
     import logging
 
     # ...
-    log = logging.getLogger()
+    log = logging.getLogger(__name__)
 
     # If the log on its own won’t emit, neither will it in the
     # context of an stpipe step, so make sure the level is set to

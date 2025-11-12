@@ -58,6 +58,43 @@ class RomanStep(Step):
             return ModelLibrary(init)
         raise TypeError(f"Invalid input: {init}")
 
+    @classmethod
+    def _get_crds_parameters(cls, dataset):
+        crds_parameters, crds_observatory = super()._get_crds_parameters(dataset)
+        if "roman.meta.instrument.detector" not in crds_parameters:
+            crds_parameters["roman.meta.instrument.detector"] = "WFI02"
+        if "roman.meta.exposure.start_time" not in crds_parameters:
+            crds_parameters["roman.meta.exposure.start_time"] = crds_parameters[
+                "roman.meta.coadd_info.time_first"
+            ]
+        return crds_parameters, crds_observatory
+
+    @staticmethod
+    def get_stpipe_loggers():
+        """
+        Get names of loggers stpipe will configure
+
+        List the names of all loggers that might emit
+        messages useful to display or record to the datamodel.
+
+        Since messages are often propagated up the logging
+        heirarchy the names here can be the names of packages
+        that might emit useful log messages.
+
+        Returns
+        -------
+        tuple of str
+            Tuple of log names for stpipe to configure
+        """
+        return (
+            "romancal",
+            "stcal",
+            "roman_datamodels",
+            "stpipe",
+            "tweakwcs",
+            "py.warnings",  # python uses this since stipe enables captureWarnings
+        )
+
     def finalize_result(self, model, reference_files_used):
         """
         Hook that allows the Step to set metadata on the output model
@@ -75,26 +112,30 @@ class RomanStep(Step):
 
         model.meta.calibration_software_version = importlib.metadata.version("romancal")
 
-        if isinstance(model, (ImageModel, MosaicModel)):
-            # convert to model.cal_logs type to avoid validation errors
-            model.cal_logs = type(model.cal_logs)(self.log_records)
+        if isinstance(model, ImageModel | MosaicModel):
+            model.meta.cal_logs = self.log_records
 
         if len(reference_files_used) > 0:
-            for ref_name, ref_file in reference_files_used:
-                if hasattr(model.meta.ref_file, ref_name):
-                    setattr(model.meta.ref_file, ref_name, ref_file)
-                    # getattr(model.meta.ref_file, ref_name).name = ref_file
-            model.meta.ref_file.crds.sw_version = crds_client.get_svn_version()
-            model.meta.ref_file.crds.context_used = crds_client.get_context_used(
-                model.crds_observatory
-            )
-
-            # this will only run if 'parent' is none, which happens when an individual
-            # step is being run or if self is a RomanPipeline and not a RomanStep.
-            if self.parent is None:
-                log.info(
-                    f"Results used CRDS context: {model.meta.ref_file.crds.context_used}"
+            if not hasattr(model.meta, "ref_file"):
+                log.error(
+                    f"Model[{model}] is missing meta.ref_file. {reference_files_used} will not be recorded"
                 )
+            else:
+                for ref_name, ref_file in reference_files_used:
+                    if hasattr(model.meta.ref_file, ref_name):
+                        setattr(model.meta.ref_file, ref_name, ref_file)
+                        # getattr(model.meta.ref_file, ref_name).name = ref_file
+                model.meta.ref_file.crds.version = crds_client.get_svn_version()
+                model.meta.ref_file.crds.context = crds_client.get_context_used(
+                    model.crds_observatory
+                )
+
+                # this will only run if 'parent' is none, which happens when an individual
+                # step is being run or if self is a RomanPipeline and not a RomanStep.
+                if self.parent is None:
+                    log.info(
+                        f"Results used CRDS context: {model.meta.ref_file.crds.context}"
+                    )
 
     def record_step_status(self, model, step_name, success=True):
         """

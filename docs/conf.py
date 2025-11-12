@@ -12,22 +12,54 @@
 
 import datetime
 import importlib
+import io
 import os
 import sys
+import tomllib
+from contextlib import contextmanager, redirect_stdout
 from distutils.version import LooseVersion
 from pathlib import Path
 
 import sphinx
 import stsci_rtd_theme
-
-if sys.version_info < (3, 11):
-    import tomli as tomllib
-else:
-    import tomllib
-
+from roman_datamodels import datamodels as rdm
+from sphinx.directives.code import CodeBlock
 from sphinx.ext.autodoc import AttributeDocumenter
 
 from romancal.stpipe import RomanStep
+
+
+@contextmanager
+def stdout_as_string_io():
+    f = io.StringIO()
+    with redirect_stdout(f):
+        yield f
+
+
+class ImageModelInfoDirective(CodeBlock):
+    def run(self):
+        example_image_model = rdm.ImageModel.create_fake_data()
+        with stdout_as_string_io() as sio:
+            example_image_model.info()
+        self.arguments = ["python"]
+        self.content = [
+            ">>> image_model.info()",
+            sio.getvalue(),
+        ]
+        return super().run()
+
+
+class ImageModelSearchDirective(CodeBlock):
+    def run(self):
+        example_image_model = rdm.ImageModel.create_fake_data()
+        with stdout_as_string_io() as sio:
+            print(example_image_model.search("detector"))
+        self.arguments = ["python"]
+        self.content = [
+            ">>> image_model.search('detector')",
+            sio.getvalue(),
+        ]
+        return super().run()
 
 
 class StepSpecDocumenter(AttributeDocumenter):
@@ -60,6 +92,8 @@ def setup(app):
         app.add_stylesheet("stsci.css")
     # add a custom AttributeDocumenter subclass to handle Step.spec formatting
     app.add_autodocumenter(StepSpecDocumenter, True)
+    app.add_directive("image_model_info", ImageModelInfoDirective)
+    app.add_directive("image_model_search", ImageModelSearchDirective)
 
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -94,26 +128,19 @@ def check_sphinx_version(expected_version):
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
     "numpy": ("https://numpy.org/devdocs", None),
-    "scipy": ("http://scipy.github.io/devdocs", None),
-    "matplotlib": ("http://matplotlib.org/", None),
+    "scipy": ("https://scipy.github.io/devdocs", None),
+    "matplotlib": ("https://matplotlib.org/", None),
     "gwcs": ("https://gwcs.readthedocs.io/en/latest/", None),
     "astropy": ("https://docs.astropy.org/en/stable/", None),
     "photutils": ("https://photutils.readthedocs.io/en/stable/", None),
-    "webbpsf": ("https://webbpsf.readthedocs.io/en/latest/", None),
     "roman_datamodels": ("https://roman-datamodels.readthedocs.io/en/latest/", None),
     "rad": ("https://rad.readthedocs.io/en/latest/", None),
+    "drizzle": ("https://spacetelescope-drizzle.readthedocs.io/en/latest/", None),
+    "stcal": ("https://stcal.readthedocs.io/en/latest/", None),
 }
 
 intersphinx_disabled_reftypes = ["*"]
 
-if sys.version_info[0] == 2:
-    intersphinx_mapping["python"] = ("http://docs.python.org/2/", None)
-    intersphinx_mapping["pythonloc"] = (
-        "http://docs.python.org/",
-        os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "local/python2_local_links.inv")
-        ),
-    )
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
@@ -171,7 +198,7 @@ suppress_warnings = [
 
 # General information about the project
 project = setup_cfg["name"]
-author = f'{setup_cfg["authors"][0]["name"]} <{setup_cfg["authors"][0]["email"]}>'
+author = setup_cfg["authors"][0]["name"]
 copyright = f"{datetime.datetime.now().year}, {author}"
 
 # The version info for the project you're documenting, acts as replacement for
@@ -234,6 +261,8 @@ graphviz_dot_args = [
     "-Gfontname=Helvetica Neue, Helvetica, Arial, sans-serif",
 ]
 
+# activate figure numbering
+numfig = True
 # If true, '()' will be appended to :func: etc. cross-reference text.
 # add_function_parentheses = True
 
@@ -258,7 +287,7 @@ pygments_style = "default"
 asdf_schema_reference_mappings = [
     (
         "tag:stsci.edu:asdf",
-        "http://asdf-standard.readthedocs.io/en/latest/generated/stsci.edu/asdf/",
+        "https://asdf-standard.readthedocs.io/en/latest/generated/stsci.edu/asdf/",
     ),
 ]
 

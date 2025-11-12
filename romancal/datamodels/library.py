@@ -41,8 +41,8 @@ class ModelLibrary(AbstractModelLibrary):
         meta = asdf.util.load_yaml(filename)["roman"]["meta"]
         if group_id := meta.get("group_id"):
             return group_id
-        if "observation" in meta:
-            return _mapping_to_group_id(meta["observation"])
+        if observation_id := meta.get("observation", {}).get("observation_id", None):
+            return observation_id
         raise NoGroupID(f"{filename} missing group_id")
 
     def _model_to_group_id(self, model):
@@ -51,32 +51,26 @@ class ModelLibrary(AbstractModelLibrary):
         """
         if (group_id := getattr(model.meta, "group_id", None)) is not None:
             return group_id
-        if hasattr(model.meta, "observation"):
-            return _mapping_to_group_id(model.meta.observation)
+        if hasattr(model.meta, "observation") and hasattr(
+            model.meta.observation, "observation_id"
+        ):
+            return model.meta.observation.observation_id
         raise NoGroupID(f"{model} missing group_id")
 
     def _assign_member_to_model(self, model, member):
-        # roman_datamodels doesn't allow assignment of meta.group_id
-        # (since it's not in the schema). To work around this use
+        # roman_datamodels doesn't allow assignment of attributes
+        # not defined in the schema. To work around this use
         # __setitem__ calls here instead of setattr
-        for attr in ("group_id", "tweakreg_catalog", "exptype"):
+        for attr in ("tweakreg_catalog",):
             if attr in member:
                 model.meta[attr] = member[attr]
-        if not hasattr(model.meta, "asn"):
-            model.meta["asn"] = {}
 
-        if "table_name" in self.asn:
-            model.meta.asn["table_name"] = self.asn["table_name"]
-        if "asn_pool" in self.asn:
-            model.meta.asn["pool_name"] = self.asn["asn_pool"]
-
-
-def _mapping_to_group_id(mapping):
-    """
-    Combine a number of file metadata values into a ``group_id`` string
-    """
-    return (
-        "roman{program}{observation}{visit}"
-        "_{visit_file_group}{visit_file_sequence}{visit_file_activity}"
-        "_{exposure}"
-    ).format_map(mapping)
+        for asn_attr, dm_attr in (
+            ("table_name", "table_name"),
+            ("asn_pool", "pool_name"),
+        ):
+            if asn_attr not in self.asn:
+                continue
+            if not hasattr(model.meta, "asn"):
+                model.meta["asn"] = {}
+            model.meta.asn[dm_attr] = self.asn[asn_attr]

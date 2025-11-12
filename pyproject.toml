@@ -2,48 +2,45 @@
 name = "romancal"
 description = "Library for calibration of science observations from the Nancy Grace Roman Space Telescope"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.14"  # <3.14 until stcal supports 3.14.
 authors = [
-    { name = "Roman calibration pipeline developers", email = "help@stsci.edu" },
+    { name = "Roman calibration pipeline developers" },
 ]
 classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Astronomy",
-    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "asdf >=3.3.0",
-    "asdf-astropy >=0.5.0",
-    "astropy >=5.3.0",
-    "crds >=11.16.16",
-    "gwcs >=0.21.0",
+    "asdf-astropy >=0.8.0",
+    "astropy >=6.0.0",
     "jsonschema >=4.8",
-    "numpy >=1.23",
-    "photutils >=1.13.0",
-    "pyparsing >=2.4.7",
+    "numpy >1.26",
+    "scipy >=1.14.1",
     "requests >=2.26",
-    # "rad>=0.21.0,<0.22.0",
-    "rad @ git+https://github.com/spacetelescope/rad.git",
-    # "roman_datamodels>=0.21.0,<0.22.0",
-    "roman_datamodels @ git+https://github.com/spacetelescope/roman_datamodels.git",
-    "scipy >=1.11",
-#    "stcal>=1.8.0,<1.9.0",
-    "stcal @ git+https://github.com/spacetelescope/stcal.git@main",
-    "stpipe >=0.7.0,<0.8.0",
-    # "stpipe @ git+https://github.com/spacetelescope/stpipe.git@main",
-    "tweakwcs >=0.8.8",
-    "spherical-geometry >= 1.2.22",
-    "stsci.imagestats >= 1.6.3",
-    "drizzle >= 1.15.0",
-    "webbpsf >= 1.2.1",
+    "photutils >=2.3.0",
+    "pyarrow >= 10.0.1",  # for Table.read(...) support in astropy for parquet files
+    "pandas >= 2.0.0",  # for Table.read(...) support in astropy for parquet files
+    # Between the intermediate and build releases we want to keep
+    # the roman_datamodels pin to the released version. If there
+    # is a need to change this to main then we need a new
+    # roman_datamodels release.
+    "roman_datamodels >=0.28.0,<0.29.0",
+    # "roman_datamodels @ git+https://github.com/spacetelescope/roman_datamodels.git",
+    "romanisim @ git+https://github.com/spacetelescope/romanisim.git",
+    "asdf >=4.1.0,<6",
+    "crds >=13.0.2",
+    "drizzle >= 2.1.1,<2.2",
+    "gwcs >=0.25.2,<0.27.0",
+    "stcal>=1.15.1,<1.16.0",
+    "stpipe >=0.11.0,<0.12.0",
+    "spherical-geometry >=1.3.3,<1.4",
+    "stsci.imagestats >=1.8.3,<1.9",  # remove when stcal fixes this missing dep
 ]
+license-files = ["LICENSE"]
 dynamic = [
     "version",
 ]
-
-[project.license]
-file = "LICENSE"
 
 [project.optional-dependencies]
 docs = [
@@ -54,23 +51,25 @@ docs = [
     "sphinx-rtd-theme",
     "stsci-rtd-theme",
     "sphinx-autobuild",
-    "tomli; python_version <=\"3.11\"",
 ]
 test = [
     "ci-watson >=0.5.0",
+    "pysiaf",
     "pytest >8.0.0",
     "pytest-astropy >= 0.11.0",
     "deepdiff",
+    "stpreview>=0.6.0",
 ]
 dev = [
+    "pysiaf",
     "romancal[docs,test]",
     "tox > 4",
     "pre-commit > 3",
 ]
 sdp = [
-    "stpreview>=0.5.1",
-    "typer",
-    "typing_extensions",
+    "pysiaf",
+    "stpreview>=0.6.0",
+    "roman-photoz",
 ]
 
 [project.urls]
@@ -81,17 +80,16 @@ repository = "https://github.com/spacetelescope/romancal"
 [project.entry-points."stpipe.steps"]
 romancal = "romancal.stpipe.integration:get_steps"
 
-[project.entry-points.pytest11]
-webbpsf = "pytest_plugin.webbpsf_plugin"
-
 [project.scripts]
+asn_from_list = "romancal.associations.asn_from_list:_cli"
+mk_skycell_asn_from_skycell_list= "romancal.associations.mk_skycell_asn_from_skycell_list:_cli"
+mk_skycell_list = "romancal.associations.mk_skycell_list:_cli"
+roman_pointing_summary = "romancal.scripts.pointing_summary:main"
+roman_set_telescope_pointing = "romancal.scripts.set_telescope_pointing:main"
+roman_set_velocity_aberration = "romancal.scripts.set_velocity_aberration:main"
 roman_static_preview = "romancal.scripts.static_preview:command"
-okify_regtests = "romancal.scripts.okify_regtests:main"
-schema_editor = "romancal.scripts.schema_editor:main"
-schemadoc = "romancal.scripts.schemadoc:main"
-verify_install_requires = "romancal.scripts.verify_install_requires:main"
-asn_from_list = "romancal.associations.asn_from_list:Main"
-skycell_asn = "romancal.associations.skycell_asn:Main"
+roman_v1_calculate = "romancal.scripts.v1_calculate:main"
+skycell_asn = "romancal.associations.skycell_asn:_cli"
 
 [build-system]
 requires = [
@@ -102,11 +100,15 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
+version_scheme = "release-branch-semver"
 
 [tool.setuptools]
 zip-safe = false
+include-package-data = false
 
 [tool.setuptools.packages.find]
+namespaces = false
+include = ["romancal*"]
 
 [tool.setuptools.package-data]
 # package_data values are glob patterns relative to each specific subpackage.
@@ -122,7 +124,7 @@ zip-safe = false
 ]
 
 [tool.pytest.ini_options]
-minversion = 4.6
+minversion = 6.0
 norecursedirs = [
     "docs/_build",
     "romancal/scripts",
@@ -132,17 +134,23 @@ norecursedirs = [
 ]
 filterwarnings = [
     "error::ResourceWarning",
+    "error::DeprecationWarning",
 ]
 junit_family = "xunit2"
 inputs_root = "roman-pipeline"
-results_root = "roman-pipeline-results"
+results_root = "roman-pipeline-results/regression-tests/runs/"
 doctest_plus = "enabled"
 doctest_rst = "enabled"
 text_file_format = "rst"
 log_cli_level = "info"
+xfail_strict = true
 addopts = [
+    "--color=yes",      # color test output
+    "--doctest-rst",    # enable doctests
     "--doctest-ignore-import-errors",
-    "--color=yes",
+    "--strict-config",  # fail on unknown config options
+    "--strict-markers", # fail on unknown markers
+    "-ra",              # Show summary of all failures/errorsproduct_names
 ]
 markers = [
     "soctests: run only the SOC tests in the suite.",
@@ -174,30 +182,19 @@ exclude_lines = [
     "if __name__ == \"__main__\":",
 ]
 
-[tool.bandit]
-skips = [
-    "B101",
-    "B307",
-    "B404",
-    "B603",
-]
-exclude_dirs = [
-    "romancal/regtest/scripts",
-]
-
-[tool.isort]
-profile = "black"
-filter_files = true
-line_length = 88
-
-[tool.black]
-line-length = 88
-force-exclude = "^/(\n  (\n      \\.eggs\n    | \\.git\n    | \\.pytest_cache\n    | \\.tox\n  )/\n)\n"
-
 [tool.ruff]
 line-length = 88
 
+
 [tool.ruff.lint]
+extend-select = [
+    "UP",   # PyUpgrade
+    "I",    # isort
+    "B",    # BugBear
+    "S",    # Bandit
+    "RUF",  # ruff specific
+    "NPY",  # Numpy lint
+]
 exclude = [
     "jdocs",
     ".tox",
@@ -206,14 +203,21 @@ exclude = [
 ]
 ignore = [
     "E741", # ambiguous variable name
-]
-extend-select = [
-    "NPY",
+    "RUF059", # unused unpacked variable
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
 "romancal/associations/__init__.py" = [
     "E402",
+]
+"romancal/**/tests/**.py" = [
+    "S101" # Bandit: Use of assert detected (fine in test files)
+]
+"romancal/**/test/**.py" = [
+    "S101" # Bandit: Use of assert detected (fine in test files)
+]
+"romancal/regtest/**.py" = [
+    "S101" # Bandit: Use of assert detected (fine in test files)
 ]
 
 [tool.cibuildwheel.macos]
@@ -263,13 +267,18 @@ name = "Scripts"
 showcontent = true
 
 [[tool.towncrier.type]]
+directory = "exposure_pipeline"
+name = "``exposure_pipeline``"
+showcontent = true
+
+[[tool.towncrier.type]]
 directory = "mosaic_pipeline"
 name = "``mosaic_pipeline``"
 showcontent = true
 
 [[tool.towncrier.type]]
-directory = "patch_match"
-name = "``patch_match``"
+directory = "skycell"
+name = "``skycell``"
 showcontent = true
 
 # steps
@@ -302,6 +311,11 @@ showcontent = true
 [[tool.towncrier.type]]
 directory = "jump_detection"
 name = "``jump_detection``"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "orientation"
+name = "``orientation``"
 showcontent = true
 
 [[tool.towncrier.type]]
@@ -357,4 +371,9 @@ showcontent = true
 [[tool.towncrier.type]]
 directory = "source_catalog"
 name = "``source_catalog``"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "multiband_catalog"
+name = "``multiband_catalog``"
 showcontent = true

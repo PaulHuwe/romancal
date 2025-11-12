@@ -26,7 +26,6 @@ ACQ_EXP_TYPES = (
 )
 
 # Exposure EXP_TYPE to Association EXPTYPE mapping
-# flake8: noqa: E241
 EXPTYPE_MAP = {
     "nrc_dark": "dark",
     "nrc_flat": "flat",
@@ -424,8 +423,8 @@ class DMSBaseMixin(ACIDMixin):
             result = False
             try:
                 result = all(test["validated"] for test in asn.validity.values())
-            except (AttributeError, KeyError):
-                raise AssociationNotValidError("Validation failed")
+            except (AttributeError, KeyError) as err:
+                raise AssociationNotValidError("Validation failed") from err
             if not result:
                 raise AssociationNotValidError("Validation failed validity tests.")
         return True
@@ -526,7 +525,7 @@ class DMSBaseMixin(ACIDMixin):
             of the target or source ID.
         """
         target_id = format_list(self.constraints["target"].found_values)
-        target = f"t{str(target_id):0>3s}"
+        target = f"t{target_id!s:0>3s}"
         return target
 
     def _get_grating(self):
@@ -539,7 +538,7 @@ class DMSBaseMixin(ACIDMixin):
             of the grating in use.
         """
         grating_id = format_list(self.constraints["grating"].found_values)
-        grating = f"{str(grating_id):0>3s}"
+        grating = f"{grating_id!s:0>3s}"
         return grating
 
 
@@ -667,8 +666,8 @@ def get_exposure_type(item, default="science", association=None):
     # Base type off of exposure type.
     try:
         exp_type = _item_attr(item, ["exp_type"])
-    except KeyError:
-        raise LookupError("Exposure type cannot be determined")
+    except KeyError as err:
+        raise LookupError("Exposure type cannot be determined") from err
 
     result = EXPTYPE_MAP.get(exp_type, default)
 
