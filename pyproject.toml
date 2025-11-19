@@ -1,3 +1,4 @@
+# DO NOT MERGE THIS
 [project]
 name = "romancal"
 description = "Library for calibration of science observations from the Nancy Grace Roman Space Telescope"
