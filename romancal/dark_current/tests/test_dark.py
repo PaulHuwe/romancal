@@ -30,11 +30,21 @@ def test_dark_step_interface(instrument, exptype):
     assert (result.data == rampfit_model.data).all()
     assert isinstance(result, ImageModel)
     assert result.validate() is None
+<<<<<<< HEAD
     assert result.data.shape == trim_shape
     assert result.dq.shape == trim_shape
     assert result.meta.cal_step.dark == "COMPLETE"
     assert result.data.dtype == np.float32
     assert result.dq.dtype == np.uint32
+=======
+    assert result.data.shape == shape
+    assert result.groupdq.shape == shape
+    assert result.pixeldq.shape == shape[1:]
+    assert result.meta.cal_step.dark == "COMPLETE"
+    assert result.data.dtype == np.float32
+    assert result.pixeldq.dtype == np.uint32
+    assert result.groupdq.dtype == np.uint8
+>>>>>>> 48eabb0d (Removed err array from dark tests.)
 
 
 @pytest.mark.parametrize(
@@ -90,7 +100,12 @@ def test_dark_step_output_dark_file(tmp_path, instrument, exptype):
     # Test dark file results
     assert isinstance(dark_out_file_model, DarkRefModel)
     assert dark_out_file_model.validate() is None
+<<<<<<< HEAD
     assert dark_out_file_model.dq.shape == image_shape
+=======
+    assert dark_out_file_model.data.shape == shape
+    assert dark_out_file_model.dq.shape == shape[1:]
+>>>>>>> 48eabb0d (Removed err array from dark tests.)
 
 
 @pytest.mark.parametrize(
